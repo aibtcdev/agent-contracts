@@ -83,6 +83,11 @@ epoch = "3.0"
 path = "contracts/manifesto.clar"
 epoch = "3.0"
 
+# Core contracts (independent multisig)
+[contracts.dao-run-cost]
+path = "contracts/core/dao-run-cost.clar"
+epoch = "3.0"
+
 # [contracts.counter]
 # path = "contracts/counter.clar"
 # epoch = "latest"

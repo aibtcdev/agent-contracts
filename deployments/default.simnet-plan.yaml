@@ -127,6 +127,11 @@ plan:
             path: contracts/extensions/dao-epoch.clar
             clarity-version: 3
         - emulated-contract-publish:
+            contract-name: dao-run-cost
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/core/dao-run-cost.clar
+            clarity-version: 3
+        - emulated-contract-publish:
             contract-name: dao-token-owner
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/extensions/dao-token-owner.clar
