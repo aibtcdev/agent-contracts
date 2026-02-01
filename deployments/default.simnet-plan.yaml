@@ -72,6 +72,21 @@ plan:
     - id: 1
       transactions:
         - emulated-contract-publish:
+            contract-name: sbtc-registry
+            emulated-sender: SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4
+            path: "./.cache/requirements/SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-registry.clar"
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: sbtc-token
+            emulated-sender: SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4
+            path: "./.cache/requirements/SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token.clar"
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: sbtc-deposit
+            emulated-sender: SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4
+            path: "./.cache/requirements/SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-deposit.clar"
+            clarity-version: 3
+        - emulated-contract-publish:
             contract-name: dao-traits
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/traits/dao-traits.clar
@@ -155,6 +170,11 @@ plan:
             contract-name: manifesto
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/manifesto.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: sbtc-config
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/config/sbtc-config.clar
             clarity-version: 3
         - emulated-contract-publish:
             contract-name: test-proposal

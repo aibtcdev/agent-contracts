@@ -9,6 +9,9 @@ cache_dir = "./.cache"
 [[project.requirements]]
 contract_id = 'SP3FBR2AGK5H9QBDH3EEN6DF8EK8JY7RX8QJ5SVTE.sip-010-trait-ft-standard'
 
+[[project.requirements]]
+contract_id = 'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token'
+
 # Trait contracts (must be listed first for dependencies)
 [contracts.dao-traits]
 path = "contracts/traits/dao-traits.clar"
@@ -26,6 +29,11 @@ epoch = "3.0"
 # Token contracts (depend on DAO for governance)
 [contracts.mock-sbtc]
 path = "contracts/token/mock-sbtc.clar"
+epoch = "3.0"
+
+# Config contracts
+[contracts.sbtc-config]
+path = "contracts/config/sbtc-config.clar"
 epoch = "3.0"
 
 [contracts.dao-token]
