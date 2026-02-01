@@ -32,6 +32,23 @@ epoch = "3.0"
 path = "contracts/token/dao-token.clar"
 epoch = "3.0"
 
+# Extension contracts (depend on base-dao)
+[contracts.dao-treasury]
+path = "contracts/extensions/dao-treasury.clar"
+epoch = "3.0"
+
+[contracts.dao-epoch]
+path = "contracts/extensions/dao-epoch.clar"
+epoch = "3.0"
+
+[contracts.dao-charter]
+path = "contracts/extensions/dao-charter.clar"
+epoch = "3.0"
+
+[contracts.dao-token-owner]
+path = "contracts/extensions/dao-token-owner.clar"
+epoch = "3.0"
+
 [contracts.checkin-registry]
 path = "contracts/checkin-registry.clar"
 epoch = "3.0"
