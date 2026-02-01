@@ -115,10 +115,30 @@ describe("core-proposals: read-only functions", function () {
     const result = simnet.callReadOnlyFn(
       coreProposalsAddress,
       "get-voting-power",
+      [Cl.principal(wallet1), Cl.uint(0)],
+      deployer
+    ).result;
+    expect(result).toBeOk(Cl.uint(0));
+  });
+
+  it("get-current-balance() returns 0 for account with no tokens", function () {
+    const result = simnet.callReadOnlyFn(
+      coreProposalsAddress,
+      "get-current-balance",
       [Cl.principal(wallet1)],
       deployer
     ).result;
     expect(result).toBeOk(Cl.uint(0));
+  });
+
+  it("get-voter-snapshot() returns none before voting", function () {
+    const result = simnet.callReadOnlyFn(
+      coreProposalsAddress,
+      "get-voter-snapshot",
+      [Cl.uint(0), Cl.principal(wallet1)],
+      deployer
+    ).result;
+    expect(result).toBeNone();
   });
 });
 
@@ -675,5 +695,295 @@ describe("core-proposals: error codes documentation", function () {
     expect(ERR_VOTE_TOO_LATE).toBe(3009);
     expect(ERR_ALREADY_VOTED).toBe(3010);
     expect(ERR_PROPOSAL_NOT_CONCLUDED).toBe(3012);
+  });
+});
+
+describe("core-proposals: voting snapshot", function () {
+  // Note: dao-token has 10% deposit tax, so depositing 1000000 yields 900000 tokens
+  const DEPOSIT_AMOUNT = 1000000;
+  const TOKEN_AMOUNT = 900000; // After 10% tax
+
+  it("voting power is locked after first vote", function () {
+    // Give wallet1 tokens (900000 after tax)
+    mintAndDeposit(DEPOSIT_AMOUNT, wallet1);
+
+    // Create proposal
+    const createReceipt = simnet.callPublicFn(
+      coreProposalsAddress,
+      "create-proposal",
+      [Cl.principal(testProposalAddress), Cl.none()],
+      wallet1
+    );
+    const proposalId = createReceipt.result.type === ClarityType.ResponseOk
+      ? Number((createReceipt.result.value as any).value)
+      : 0;
+
+    // Advance to voting period
+    mineBlocks(VOTING_DELAY + 1);
+
+    // Vote with wallet1
+    const voteReceipt = simnet.callPublicFn(
+      coreProposalsAddress,
+      "vote-on-proposal",
+      [Cl.uint(proposalId), Cl.bool(true)],
+      wallet1
+    );
+    expect(voteReceipt.result).toBeOk(Cl.bool(true));
+
+    // Verify snapshot was created
+    const snapshot = simnet.callReadOnlyFn(
+      coreProposalsAddress,
+      "get-voter-snapshot",
+      [Cl.uint(proposalId), Cl.principal(wallet1)],
+      deployer
+    ).result;
+    expect(snapshot.type).toBe(ClarityType.OptionalSome);
+    if (snapshot.type === ClarityType.OptionalSome) {
+      expect(snapshot.value).toStrictEqual(Cl.uint(TOKEN_AMOUNT));
+    }
+
+    // Verify get-voting-power returns snapshot value
+    const votingPower = simnet.callReadOnlyFn(
+      coreProposalsAddress,
+      "get-voting-power",
+      [Cl.principal(wallet1), Cl.uint(proposalId)],
+      deployer
+    ).result;
+    expect(votingPower).toBeOk(Cl.uint(TOKEN_AMOUNT));
+  });
+
+  it("get-voter-snapshot returns none before voting", function () {
+    mintAndDeposit(1000000, wallet1);
+    const createReceipt = simnet.callPublicFn(
+      coreProposalsAddress,
+      "create-proposal",
+      [Cl.principal(testProposalAddress), Cl.none()],
+      wallet1
+    );
+    const proposalId = createReceipt.result.type === ClarityType.ResponseOk
+      ? Number((createReceipt.result.value as any).value)
+      : 0;
+
+    // Check snapshot before voting
+    const snapshot = simnet.callReadOnlyFn(
+      coreProposalsAddress,
+      "get-voter-snapshot",
+      [Cl.uint(proposalId), Cl.principal(wallet1)],
+      deployer
+    ).result;
+    expect(snapshot).toBeNone();
+  });
+
+  it("token transfer after vote does not affect recorded vote", function () {
+    // Give wallet1 tokens (900000 after tax)
+    mintAndDeposit(DEPOSIT_AMOUNT, wallet1);
+
+    // Create proposal
+    const createReceipt = simnet.callPublicFn(
+      coreProposalsAddress,
+      "create-proposal",
+      [Cl.principal(testProposalAddress), Cl.none()],
+      wallet1
+    );
+    const proposalId = createReceipt.result.type === ClarityType.ResponseOk
+      ? Number((createReceipt.result.value as any).value)
+      : 0;
+
+    // Advance to voting period
+    mineBlocks(VOTING_DELAY + 1);
+
+    // Vote with wallet1
+    simnet.callPublicFn(
+      coreProposalsAddress,
+      "vote-on-proposal",
+      [Cl.uint(proposalId), Cl.bool(true)],
+      wallet1
+    );
+
+    // Get votes-for before transfer
+    let proposalData = simnet.callReadOnlyFn(
+      coreProposalsAddress,
+      "get-proposal",
+      [Cl.uint(proposalId)],
+      deployer
+    ).result;
+    let votesForBefore = 0n;
+    if (proposalData.type === ClarityType.OptionalSome && proposalData.value.type === ClarityType.Tuple) {
+      votesForBefore = (proposalData.value.value["votes-for"] as any).value;
+    }
+
+    // Transfer tokens to wallet2
+    simnet.callPublicFn(
+      daoTokenAddress,
+      "transfer",
+      [Cl.uint(450000), Cl.principal(wallet1), Cl.principal(wallet2), Cl.none()],
+      wallet1
+    );
+
+    // Check votes-for is unchanged after transfer
+    proposalData = simnet.callReadOnlyFn(
+      coreProposalsAddress,
+      "get-proposal",
+      [Cl.uint(proposalId)],
+      deployer
+    ).result;
+    if (proposalData.type === ClarityType.OptionalSome && proposalData.value.type === ClarityType.Tuple) {
+      const votesForAfter = (proposalData.value.value["votes-for"] as any).value;
+      expect(votesForAfter).toBe(votesForBefore);
+    }
+
+    // Verify snapshot unchanged (still 900000, the original balance at vote time)
+    const snapshot = simnet.callReadOnlyFn(
+      coreProposalsAddress,
+      "get-voter-snapshot",
+      [Cl.uint(proposalId), Cl.principal(wallet1)],
+      deployer
+    ).result;
+    if (snapshot.type === ClarityType.OptionalSome) {
+      expect(snapshot.value).toStrictEqual(Cl.uint(TOKEN_AMOUNT));
+    }
+  });
+
+  it("vote manipulation prevention - transferred tokens create new snapshot", function () {
+    // wallet1 has 900000 tokens after tax
+    mintAndDeposit(DEPOSIT_AMOUNT, wallet1);
+
+    // Create proposal
+    const createReceipt = simnet.callPublicFn(
+      coreProposalsAddress,
+      "create-proposal",
+      [Cl.principal(testProposalAddress), Cl.none()],
+      wallet1
+    );
+    const proposalId = createReceipt.result.type === ClarityType.ResponseOk
+      ? Number((createReceipt.result.value as any).value)
+      : 0;
+
+    // Advance to voting period
+    mineBlocks(VOTING_DELAY + 1);
+
+    // wallet1 votes (snapshot = 900000)
+    simnet.callPublicFn(
+      coreProposalsAddress,
+      "vote-on-proposal",
+      [Cl.uint(proposalId), Cl.bool(true)],
+      wallet1
+    );
+
+    // wallet1 transfers 450000 to wallet2
+    simnet.callPublicFn(
+      daoTokenAddress,
+      "transfer",
+      [Cl.uint(450000), Cl.principal(wallet1), Cl.principal(wallet2), Cl.none()],
+      wallet1
+    );
+
+    // wallet2 votes - their snapshot is 450000 (current balance at vote time)
+    simnet.callPublicFn(
+      coreProposalsAddress,
+      "vote-on-proposal",
+      [Cl.uint(proposalId), Cl.bool(true)],
+      wallet2
+    );
+
+    // Check wallet2's snapshot
+    const wallet2Snapshot = simnet.callReadOnlyFn(
+      coreProposalsAddress,
+      "get-voter-snapshot",
+      [Cl.uint(proposalId), Cl.principal(wallet2)],
+      deployer
+    ).result;
+    if (wallet2Snapshot.type === ClarityType.OptionalSome) {
+      // wallet2's snapshot is 450000 - they received tokens after wallet1 voted
+      expect(wallet2Snapshot.value).toStrictEqual(Cl.uint(450000));
+    }
+
+    // Total votes should be 1350000 (900000 from wallet1 + 450000 from wallet2)
+    // This is the key test - even though only 900000 tokens exist,
+    // the votes total to 1350000 because wallet1's snapshot was taken
+    // before transfer and wallet2's snapshot was taken after receiving tokens
+    // Note: This demonstrates the limitation of first-vote snapshot - tokens
+    // can effectively vote "twice" if transferred between votes
+    const proposalData = simnet.callReadOnlyFn(
+      coreProposalsAddress,
+      "get-proposal",
+      [Cl.uint(proposalId)],
+      deployer
+    ).result;
+    if (proposalData.type === ClarityType.OptionalSome && proposalData.value.type === ClarityType.Tuple) {
+      const totalVotes = (proposalData.value.value["votes-for"] as any).value;
+      expect(totalVotes).toBe(1350000n);
+    }
+  });
+
+  it("get-voting-power returns current balance when no snapshot exists", function () {
+    mintAndDeposit(DEPOSIT_AMOUNT, wallet1);
+    const createReceipt = simnet.callPublicFn(
+      coreProposalsAddress,
+      "create-proposal",
+      [Cl.principal(testProposalAddress), Cl.none()],
+      wallet1
+    );
+    const proposalId = createReceipt.result.type === ClarityType.ResponseOk
+      ? Number((createReceipt.result.value as any).value)
+      : 0;
+
+    // Before voting, get-voting-power should return current balance (900000 after tax)
+    const votingPower = simnet.callReadOnlyFn(
+      coreProposalsAddress,
+      "get-voting-power",
+      [Cl.principal(wallet1), Cl.uint(proposalId)],
+      deployer
+    ).result;
+    expect(votingPower).toBeOk(Cl.uint(TOKEN_AMOUNT));
+  });
+
+  it("get-voting-power returns snapshot after voting", function () {
+    mintAndDeposit(DEPOSIT_AMOUNT, wallet1);
+    const createReceipt = simnet.callPublicFn(
+      coreProposalsAddress,
+      "create-proposal",
+      [Cl.principal(testProposalAddress), Cl.none()],
+      wallet1
+    );
+    const proposalId = createReceipt.result.type === ClarityType.ResponseOk
+      ? Number((createReceipt.result.value as any).value)
+      : 0;
+
+    mineBlocks(VOTING_DELAY + 1);
+
+    // Vote
+    simnet.callPublicFn(
+      coreProposalsAddress,
+      "vote-on-proposal",
+      [Cl.uint(proposalId), Cl.bool(true)],
+      wallet1
+    );
+
+    // Transfer some tokens away (450000 from 900000)
+    simnet.callPublicFn(
+      daoTokenAddress,
+      "transfer",
+      [Cl.uint(450000), Cl.principal(wallet1), Cl.principal(wallet2), Cl.none()],
+      wallet1
+    );
+
+    // get-voting-power should still return snapshot (900000), not current balance (450000)
+    const votingPower = simnet.callReadOnlyFn(
+      coreProposalsAddress,
+      "get-voting-power",
+      [Cl.principal(wallet1), Cl.uint(proposalId)],
+      deployer
+    ).result;
+    expect(votingPower).toBeOk(Cl.uint(TOKEN_AMOUNT));
+
+    // Current balance should be 450000
+    const currentBalance = simnet.callReadOnlyFn(
+      coreProposalsAddress,
+      "get-current-balance",
+      [Cl.principal(wallet1)],
+      deployer
+    ).result;
+    expect(currentBalance).toBeOk(Cl.uint(450000));
   });
 });

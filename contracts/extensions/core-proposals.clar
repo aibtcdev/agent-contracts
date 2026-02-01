@@ -40,6 +40,7 @@
 (define-constant ERR_ALREADY_VOTED (err u3010))
 (define-constant ERR_PROPOSAL_NOT_PASSED (err u3011))
 (define-constant ERR_PROPOSAL_NOT_CONCLUDED (err u3012))
+(define-constant ERR_SNAPSHOT_ALREADY_EXISTS (err u3013))
 
 ;; DATA VARS
 
@@ -68,6 +69,10 @@
   amount: uint,
   vote: bool
 })
+
+;; Snapshot of voter balances at first vote interaction
+;; Once set, this is the immutable voting power for this voter on this proposal
+(define-map VoterSnapshots { proposal-id: uint, voter: principal } uint)
 
 ;; PUBLIC FUNCTIONS
 
@@ -141,11 +146,13 @@
 
 ;; Cast a vote on a proposal
 ;; vote: true = for, false = against
+;; Voting power is locked at first vote via snapshot mechanism
 (define-public (vote-on-proposal (proposalId uint) (vote bool))
   (let
     (
       (proposalRecord (unwrap! (map-get? Proposals proposalId) ERR_PROPOSAL_NOT_FOUND))
-      (senderBalance (unwrap! (contract-call? .dao-token get-balance tx-sender) ERR_FETCHING_TOKEN_DATA))
+      ;; Use snapshot balance - creates snapshot on first vote, returns existing if already set
+      (senderBalance (try! (get-or-create-snapshot proposalId tx-sender)))
     )
     ;; Caller must have tokens to vote
     (asserts! (> senderBalance u0) ERR_INSUFFICIENT_BALANCE)
@@ -306,9 +313,23 @@
   (map-get? VoteRecords { proposal-id: proposalId, voter: voter })
 )
 
-;; Get voting power (current token balance)
-(define-read-only (get-voting-power (who principal))
+;; Get voting power for a proposal
+;; Returns snapshot balance if voter has one, otherwise current balance
+(define-read-only (get-voting-power (who principal) (proposalId uint))
+  (match (map-get? VoterSnapshots { proposal-id: proposalId, voter: who })
+    snapshot (ok snapshot)
+    (contract-call? .dao-token get-balance who)
+  )
+)
+
+;; Get current token balance (without proposal context)
+(define-read-only (get-current-balance (who principal))
   (contract-call? .dao-token get-balance who)
+)
+
+;; Get voter's snapshot for a proposal (none if not yet set)
+(define-read-only (get-voter-snapshot (proposalId uint) (voter principal))
+  (map-get? VoterSnapshots { proposal-id: proposalId, voter: voter })
 )
 
 ;; Check if a proposal is currently in voting period
@@ -354,6 +375,23 @@
 )
 
 ;; PRIVATE FUNCTIONS
+
+;; Get voter's snapshot balance, or create one if not exists
+;; Uses current balance at first vote (first-vote snapshot)
+;; Once created, voting power is locked for this proposal
+(define-private (get-or-create-snapshot (proposalId uint) (voter principal))
+  (match (map-get? VoterSnapshots { proposal-id: proposalId, voter: voter })
+    existing-snapshot (ok existing-snapshot)
+    (let
+      (
+        (snapshot-balance (unwrap! (contract-call? .dao-token get-balance voter) ERR_FETCHING_TOKEN_DATA))
+      )
+      ;; Record snapshot for this voter
+      (map-insert VoterSnapshots { proposal-id: proposalId, voter: voter } snapshot-balance)
+      (ok snapshot-balance)
+    )
+  )
+)
 
 ;; Authorization check: is caller the DAO or an enabled extension?
 (define-private (is-dao-or-extension)
