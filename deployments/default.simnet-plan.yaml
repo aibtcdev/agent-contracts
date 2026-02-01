@@ -92,6 +92,11 @@ plan:
             path: contracts/traits/agent-traits.clar
             clarity-version: 3
         - emulated-contract-publish:
+            contract-name: agent-account
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/agent/agent-account.clar
+            clarity-version: 3
+        - emulated-contract-publish:
             contract-name: checkin-registry
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/checkin-registry.clar

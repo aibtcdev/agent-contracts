@@ -299,11 +299,12 @@ describe("agent-registry: read-only functions", function () {
 
   it("get-account-by-agent() returns none for unknown agent", function () {
     // arrange
+    // Note: wallet2 is used by agent-account as its agent, so use wallet3 here
     // act
     const result = simnet.callReadOnlyFn(
       agentRegistryAddress,
       "get-account-by-agent",
-      [Cl.principal(wallet2)],
+      [Cl.principal(wallet3)],
       deployer
     ).result;
     // assert
