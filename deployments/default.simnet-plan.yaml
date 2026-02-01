@@ -92,6 +92,16 @@ plan:
             path: contracts/checkin-registry.clar
             clarity-version: 3
         - emulated-contract-publish:
+            contract-name: mock-sbtc
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/token/mock-sbtc.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: dao-token
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/token/dao-token.clar
+            clarity-version: 3
+        - emulated-contract-publish:
             contract-name: proof-registry
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/proof-registry.clar

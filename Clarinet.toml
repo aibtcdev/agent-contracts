@@ -23,6 +23,15 @@ epoch = "3.0"
 path = "contracts/dao/base-dao.clar"
 epoch = "3.0"
 
+# Token contracts (depend on DAO for governance)
+[contracts.mock-sbtc]
+path = "contracts/token/mock-sbtc.clar"
+epoch = "3.0"
+
+[contracts.dao-token]
+path = "contracts/token/dao-token.clar"
+epoch = "3.0"
+
 [contracts.checkin-registry]
 path = "contracts/checkin-registry.clar"
 epoch = "3.0"
