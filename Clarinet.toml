@@ -5,6 +5,19 @@ authors = []
 telemetry = false
 cache_dir = "./.cache"
 
+# External contracts loaded by clarinet
+[[project.requirements]]
+contract_id = 'SP3FBR2AGK5H9QBDH3EEN6DF8EK8JY7RX8QJ5SVTE.sip-010-trait-ft-standard'
+
+# Trait contracts (must be listed first for dependencies)
+[contracts.dao-traits]
+path = "contracts/traits/dao-traits.clar"
+epoch = "3.0"
+
+[contracts.agent-traits]
+path = "contracts/traits/agent-traits.clar"
+epoch = "3.0"
+
 [contracts.checkin-registry]
 path = "contracts/checkin-registry.clar"
 epoch = "3.0"
