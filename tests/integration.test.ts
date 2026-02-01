@@ -14,8 +14,9 @@ const checkinContract = `${deployer}.checkin-registry`;
 const proofContract = `${deployer}.proof-registry`;
 
 // Error codes
-const ERR_HASH_ALREADY_EXISTS = 255;
-const ERR_TEXT_EMPTY = 337;
+const ERR_HASH_ALREADY_EXISTS = 255; // proof-registry
+const ERR_TEXT_EMPTY = 337; // manifesto
+const ERR_PROOF_FAILED = 342; // manifesto (maps proof-registry errors)
 
 // Helper to create test hashes
 function createTestHash(seed: number): Uint8Array {
@@ -225,7 +226,8 @@ describe(`integration: full workflow verification`, function () {
     );
 
     // assert - operation failed
-    expect(receipt.result).toBeErr(Cl.uint(ERR_HASH_ALREADY_EXISTS));
+    // Note: proof-registry's ERR_HASH_ALREADY_EXISTS is mapped to manifesto's ERR_PROOF_FAILED
+    expect(receipt.result).toBeErr(Cl.uint(ERR_PROOF_FAILED));
 
     // assert - NO changes to any registry for address2
     const checkinAfter = simnet.callReadOnlyFn(

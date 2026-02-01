@@ -210,7 +210,7 @@ describe(`manifesto: submit-manifesto()`, function () {
     expect(receipt.result).toBeErr(Cl.uint(ERR_TEXT_EMPTY));
   });
 
-  it("submit-manifesto() fails for duplicate hash (inherits ERR_HASH_ALREADY_EXISTS)", function () {
+  it("submit-manifesto() fails for duplicate hash (mapped to ERR_PROOF_FAILED)", function () {
     // arrange
     const duplicateHash = createTestHash(70);
     const text1 = "First manifesto with this hash.";
@@ -228,8 +228,8 @@ describe(`manifesto: submit-manifesto()`, function () {
       [Cl.buffer(duplicateHash), Cl.stringUtf8(text2)],
       address1
     );
-    // assert - inherits error from proof-registry
-    expect(receipt.result).toBeErr(Cl.uint(ERR_HASH_ALREADY_EXISTS));
+    // assert - proof-registry error mapped to manifesto's ERR_PROOF_FAILED
+    expect(receipt.result).toBeErr(Cl.uint(ERR_PROOF_FAILED));
   });
 
   it("submit-manifesto() works for multiple users independently", function () {
@@ -520,7 +520,8 @@ describe(`manifesto: atomicity scenarios`, function () {
     ).result;
 
     // assert - operation failed and check-in was NOT created
-    expect(receipt.result).toBeErr(Cl.uint(ERR_HASH_ALREADY_EXISTS));
+    // Note: proof-registry's ERR_HASH_ALREADY_EXISTS (255) is mapped to manifesto's ERR_PROOF_FAILED (342)
+    expect(receipt.result).toBeErr(Cl.uint(ERR_PROOF_FAILED));
     expect(countAfter).toStrictEqual(countBefore);
   });
 });

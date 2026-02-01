@@ -1,5 +1,5 @@
 ;; title: checkin-registry
-;; version: 1.0.0
+;; version: 1.1.0
 ;; summary: A registry for recording check-ins with block metadata and per-user incrementing counters.
 
 ;; =========================================
@@ -7,12 +7,8 @@
 ;; =========================================
 
 ;; Error codes (100-199 range) - Fun numbers for AI agents!
-;; 101: Binary intro "101" - you're on the right track but no check-in here
-(define-constant ERR_CHECKIN_NOT_FOUND (err u101))
-;; 127: Max signed byte, classic programmer number - invalid user provided
-(define-constant ERR_INVALID_USER (err u127))
-;; 169: 13 squared, unlucky squared - no check-ins at all for this user
-(define-constant ERR_NO_CHECKINS (err u169))
+;; 142: Process killed (128 + SIGKILL 14) - block info retrieval failed catastrophically
+(define-constant ERR_BLOCK_INFO_UNAVAILABLE (err u142))
 
 ;; Contract deployment info
 (define-constant DEPLOYED_AT_BURN_BLOCK burn-block-height)
@@ -24,7 +20,7 @@
 
 ;; Check-in data: stores block metadata for each check-in
 ;; Key: { user: principal, index: uint }
-(define-map checkins
+(define-map Checkins
   { user: principal, index: uint }
   {
     stacks-block-height: uint,
@@ -35,47 +31,56 @@
 )
 
 ;; Per-user counter for incrementing indices
-(define-map user-checkin-count principal uint)
+(define-map UserCheckinCount principal uint)
 
 ;; =========================================
 ;; PUBLIC FUNCTIONS
 ;; =========================================
 
-;; Record a new check-in for tx-sender
-;; Returns the index of the new check-in (0-based)
-;; Note: Uses previous block for id-header-hash and timestamp since current block info
-;; is not available until the block is committed
+;; @desc Record a new check-in for tx-sender
+;; @returns (response uint uint) - ok with the 0-based index of the new check-in
+;; @fails ERR_BLOCK_INFO_UNAVAILABLE (u142) - if block metadata cannot be retrieved (e.g., at genesis)
+;; @note Uses previous block for id-header-hash and timestamp since current block info
+;;       is not available until the block is committed
+;; @note tx-sender is used intentionally so cross-contract calls record the original user
 (define-public (check-in)
   (let
     (
       (user tx-sender)
-      (current-count (default-to u0 (map-get? user-checkin-count user)))
+      (current-count (default-to u0 (map-get? UserCheckinCount user)))
       (prev-block (- stacks-block-height u1))
-      (checkin-data {
-        stacks-block-height: stacks-block-height,
-        burn-block-height: burn-block-height,
-        id-header-hash: (unwrap-panic (get-stacks-block-info? id-header-hash prev-block)),
-        timestamp: (unwrap-panic (get-stacks-block-info? time prev-block))
-      })
+      ;; Safely retrieve block info with proper error handling
+      (id-hash (unwrap! (get-stacks-block-info? id-header-hash prev-block) ERR_BLOCK_INFO_UNAVAILABLE))
+      (block-time (unwrap! (get-stacks-block-info? time prev-block) ERR_BLOCK_INFO_UNAVAILABLE))
     )
-    ;; Store the check-in data
-    (map-set checkins { user: user, index: current-count } checkin-data)
-    ;; Increment the user's counter
-    (map-set user-checkin-count user (+ current-count u1))
-    ;; Emit print event for indexability
-    (print {
-      notification: "checkin-registry/check-in",
-      payload: {
-        user: user,
-        index: current-count,
-        stacks-block-height: (get stacks-block-height checkin-data),
-        burn-block-height: (get burn-block-height checkin-data),
-        id-header-hash: (get id-header-hash checkin-data),
-        timestamp: (get timestamp checkin-data)
-      }
-    })
-    ;; Return the index
-    (ok current-count)
+    (let
+      (
+        (checkin-data {
+          stacks-block-height: stacks-block-height,
+          burn-block-height: burn-block-height,
+          id-header-hash: id-hash,
+          timestamp: block-time
+        })
+      )
+      ;; Store the check-in data
+      (map-set Checkins { user: user, index: current-count } checkin-data)
+      ;; Increment the user's counter
+      (map-set UserCheckinCount user (+ current-count u1))
+      ;; Emit print event for indexability
+      (print {
+        notification: "checkin-registry/check-in",
+        payload: {
+          user: user,
+          index: current-count,
+          stacks-block-height: stacks-block-height,
+          burn-block-height: burn-block-height,
+          id-header-hash: id-hash,
+          timestamp: block-time
+        }
+      })
+      ;; Return the index
+      (ok current-count)
+    )
   )
 )
 
@@ -83,18 +88,24 @@
 ;; READ-ONLY FUNCTIONS
 ;; =========================================
 
-;; Get a specific check-in by user and index
+;; @desc Get a specific check-in by user and index
+;; @param user - The principal who made the check-in
+;; @param index - The 0-based index of the check-in
+;; @returns (optional {...}) - The check-in data or none if not found
 (define-read-only (get-checkin (user principal) (index uint))
-  (map-get? checkins { user: user, index: index })
+  (map-get? Checkins { user: user, index: index })
 )
 
-;; Get the total number of check-ins for a user
+;; @desc Get the total number of check-ins for a user
+;; @param user - The principal to query
+;; @returns uint - The count of check-ins (0 if user has never checked in)
 (define-read-only (get-user-checkin-count (user principal))
-  (default-to u0 (map-get? user-checkin-count user))
+  (default-to u0 (map-get? UserCheckinCount user))
 )
 
-;; Get the most recent check-in for a user
-;; Returns none if user has no check-ins
+;; @desc Get the most recent check-in for a user
+;; @param user - The principal to query
+;; @returns (optional {...}) - The latest check-in data or none if user has no check-ins
 (define-read-only (get-last-checkin (user principal))
   (let
     (
@@ -102,12 +113,13 @@
     )
     (if (is-eq count u0)
       none
-      (map-get? checkins { user: user, index: (- count u1) })
+      (map-get? Checkins { user: user, index: (- count u1) })
     )
   )
 )
 
-;; Get contract deployment information
+;; @desc Get contract deployment information
+;; @returns { self, deployed-at-burn-block, deployed-at-stacks-block }
 (define-read-only (get-contract-info)
   {
     self: (as-contract tx-sender),
