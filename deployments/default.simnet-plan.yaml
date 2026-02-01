@@ -77,14 +77,19 @@ plan:
             path: contracts/traits/dao-traits.clar
             clarity-version: 3
         - emulated-contract-publish:
-            contract-name: agent-traits
-            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            path: contracts/traits/agent-traits.clar
-            clarity-version: 3
-        - emulated-contract-publish:
             contract-name: base-dao
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/dao/base-dao.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: agent-registry
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/agent/agent-registry.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: agent-traits
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/traits/agent-traits.clar
             clarity-version: 3
         - emulated-contract-publish:
             contract-name: checkin-registry
