@@ -9,6 +9,10 @@ cache_dir = "./.cache"
 path = "contracts/checkin-registry.clar"
 epoch = "3.0"
 
+[contracts.proof-registry]
+path = "contracts/proof-registry.clar"
+epoch = "3.0"
+
 # [contracts.counter]
 # path = "contracts/counter.clar"
 # epoch = "latest"
