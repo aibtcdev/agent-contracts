@@ -278,6 +278,138 @@ describe("dao-treasury: read-only functions", function () {
   });
 });
 
+describe("dao-treasury: deposit-stx", function () {
+  it("deposit-stx() succeeds for any caller with STX", function () {
+    // arrange
+    const amount = 1000000; // 1 STX
+    // act
+    const receipt = simnet.callPublicFn(
+      treasuryAddress,
+      "deposit-stx",
+      [Cl.uint(amount)],
+      wallet1
+    );
+    // assert
+    expect(receipt.result).toBeOk(Cl.bool(true));
+  });
+
+  it("deposit-stx() emits correct print event", function () {
+    // arrange
+    const amount = 500000;
+    // act
+    const receipt = simnet.callPublicFn(
+      treasuryAddress,
+      "deposit-stx",
+      [Cl.uint(amount)],
+      wallet2
+    );
+    // assert
+    expect(receipt.result).toBeOk(Cl.bool(true));
+    expect(receipt.events).toContainEqual(
+      expect.objectContaining({
+        event: "print_event",
+      })
+    );
+  });
+
+  it("deposit-stx() fails with insufficient STX balance", function () {
+    // arrange
+    const hugeAmount = 1000000000000000; // Way more than any wallet has
+    // act
+    const receipt = simnet.callPublicFn(
+      treasuryAddress,
+      "deposit-stx",
+      [Cl.uint(hugeAmount)],
+      wallet1
+    );
+    // assert - stx-transfer? returns (err u1) for insufficient balance
+    expect(receipt.result).toBeErr(Cl.uint(1));
+  });
+});
+
+describe("dao-treasury: withdraw-stx", function () {
+  it("withdraw-stx() fails for non-DAO caller", function () {
+    // arrange
+    // act
+    const receipt = simnet.callPublicFn(
+      treasuryAddress,
+      "withdraw-stx",
+      [Cl.uint(1000), Cl.principal(wallet1)],
+      wallet1
+    );
+    // assert
+    expect(receipt.result).toBeErr(Cl.uint(ERR_NOT_DAO_OR_EXTENSION));
+  });
+
+  it("withdraw-stx() fails for deployer (not DAO)", function () {
+    // arrange
+    // act
+    const receipt = simnet.callPublicFn(
+      treasuryAddress,
+      "withdraw-stx",
+      [Cl.uint(1000), Cl.principal(wallet1)],
+      deployer
+    );
+    // assert
+    expect(receipt.result).toBeErr(Cl.uint(ERR_NOT_DAO_OR_EXTENSION));
+  });
+});
+
+describe("dao-treasury: get-stx-balance", function () {
+  it("get-stx-balance() returns 0 initially", function () {
+    // arrange
+    // act
+    const result = simnet.callReadOnlyFn(
+      treasuryAddress,
+      "get-stx-balance",
+      [],
+      deployer
+    ).result;
+    // assert
+    expect(result).toStrictEqual(Cl.uint(0));
+  });
+
+  it("get-stx-balance() returns correct amount after deposit", function () {
+    // arrange
+    const depositAmount = 2000000; // 2 STX
+    // act
+    simnet.callPublicFn(
+      treasuryAddress,
+      "deposit-stx",
+      [Cl.uint(depositAmount)],
+      wallet1
+    );
+    const result = simnet.callReadOnlyFn(
+      treasuryAddress,
+      "get-stx-balance",
+      [],
+      deployer
+    ).result;
+    // assert
+    expect(result).toStrictEqual(Cl.uint(depositAmount));
+  });
+
+  it("get-stx-balance() can be called by anyone", function () {
+    // arrange
+    // act
+    const result1 = simnet.callReadOnlyFn(
+      treasuryAddress,
+      "get-stx-balance",
+      [],
+      deployer
+    ).result;
+    const result2 = simnet.callReadOnlyFn(
+      treasuryAddress,
+      "get-stx-balance",
+      [],
+      wallet1
+    ).result;
+    // assert
+    expect(result1.type).toBe(ClarityType.UInt);
+    expect(result2.type).toBe(ClarityType.UInt);
+  });
+});
+
 describe("dao-treasury: error codes documentation", function () {
   it("documents all error codes", function () {
     expect(ERR_NOT_DAO_OR_EXTENSION).toBe(1900);

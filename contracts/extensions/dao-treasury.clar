@@ -86,6 +86,39 @@
   )
 )
 
+;; Deposit STX to the treasury (anyone can deposit)
+(define-public (deposit-stx (amount uint))
+  (begin
+    ;; No auth check - anyone can deposit STX
+    (print {
+      notification: "dao-treasury/deposit-stx",
+      payload: {
+        amount: amount,
+        sender: tx-sender,
+        contractCaller: contract-caller
+      }
+    })
+    (stx-transfer? amount tx-sender SELF)
+  )
+)
+
+;; Withdraw STX from the treasury (DAO/extension only)
+(define-public (withdraw-stx (amount uint) (recipient principal))
+  (begin
+    (try! (is-dao-or-extension))
+    (print {
+      notification: "dao-treasury/withdraw-stx",
+      payload: {
+        amount: amount,
+        recipient: recipient,
+        contractCaller: contract-caller,
+        txSender: tx-sender
+      }
+    })
+    (as-contract (stx-transfer? amount SELF recipient))
+  )
+)
+
 ;; READ-ONLY FUNCTIONS
 
 ;; Check if asset is allowed (returns bool, defaults to false)
@@ -96,6 +129,11 @@
 ;; Get allowed asset status from map
 (define-read-only (get-allowed-asset (assetContract principal))
   (map-get? AllowedAssets assetContract)
+)
+
+;; Get STX balance of the treasury
+(define-read-only (get-stx-balance)
+  (stx-get-balance SELF)
 )
 
 ;; Get contract info

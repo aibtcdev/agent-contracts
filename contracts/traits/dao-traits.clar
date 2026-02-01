@@ -72,6 +72,15 @@
     (<ft-trait> uint principal)
     (response bool uint)
   )
+  ;; Native STX operations
+  (deposit-stx
+    (uint)
+    (response bool uint)
+  )
+  (withdraw-stx
+    (uint principal)
+    (response bool uint)
+  )
 ))
 
 ;; Epoch tracking extension for time-based governance.
