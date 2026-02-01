@@ -18,6 +18,11 @@ epoch = "3.0"
 path = "contracts/traits/agent-traits.clar"
 epoch = "3.0"
 
+# DAO contracts (depend on traits)
+[contracts.base-dao]
+path = "contracts/dao/base-dao.clar"
+epoch = "3.0"
+
 [contracts.checkin-registry]
 path = "contracts/checkin-registry.clar"
 epoch = "3.0"
