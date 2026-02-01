@@ -53,9 +53,13 @@ epoch = "3.0"
 path = "contracts/extensions/core-proposals.clar"
 epoch = "3.0"
 
-# Test proposal contracts
+# Proposal contracts
 [contracts.test-proposal]
 path = "contracts/proposals/test-proposal.clar"
+epoch = "3.0"
+
+[contracts.init-proposal]
+path = "contracts/proposals/init-proposal.clar"
 epoch = "3.0"
 
 # Agent contracts (depend on base-dao)

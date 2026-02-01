@@ -137,6 +137,11 @@ plan:
             path: contracts/extensions/dao-treasury.clar
             clarity-version: 3
         - emulated-contract-publish:
+            contract-name: init-proposal
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/proposals/init-proposal.clar
+            clarity-version: 3
+        - emulated-contract-publish:
             contract-name: proof-registry
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/proof-registry.clar
