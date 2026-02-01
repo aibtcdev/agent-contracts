@@ -20,6 +20,8 @@
 (define-constant ERR_INVALID_PRINCIPAL (err u2006))
 (define-constant ERR_ACCOUNT_IS_NOT_CONTRACT (err u2007))
 (define-constant ERR_OWNER_MUST_BE_STANDARD (err u2008))
+(define-constant ERR_ACCOUNT_ALREADY_ACTIVE (err u2009))
+(define-constant ERR_ACCOUNT_ALREADY_INACTIVE (err u2010))
 
 ;; Attestation levels
 (define-constant ATTESTATION_UNVERIFIED u0)      ;; Default, no verification
@@ -45,13 +47,14 @@
 })
 
 ;; Registered agent accounts
-;; Stores ownership, agent address, and verification status
+;; Stores ownership, agent address, verification status, and active state
 (define-map RegisteredAccounts principal {
   owner: principal,
   agent: principal,
   template-hash: (optional (buff 32)),
   registered-at: uint,
-  attestation-level: uint
+  attestation-level: uint,
+  active: bool
 })
 
 ;; Lookup maps for efficient queries
@@ -140,7 +143,8 @@
       agent: agent,
       template-hash: none,
       registered-at: stacks-block-height,
-      attestation-level: ATTESTATION_REGISTERED
+      attestation-level: ATTESTATION_REGISTERED,
+      active: true
     })
     ;; Set up lookup maps
     (map-insert OwnerToAccount owner account)
@@ -250,6 +254,46 @@
 )
 
 ;; ============================================================
+;; AGENT ACTIVATION MANAGEMENT
+;; ============================================================
+
+;; Deactivate an agent account (DAO/extension only)
+(define-public (deactivate-agent (account principal))
+  (let ((account-info (unwrap! (map-get? RegisteredAccounts account) ERR_ACCOUNT_NOT_FOUND)))
+    (try! (is-dao-or-extension))
+    (asserts! (get active account-info) ERR_ACCOUNT_ALREADY_INACTIVE)
+    (map-set RegisteredAccounts account (merge account-info { active: false }))
+    (print {
+      notification: "agent-registry/deactivate-agent",
+      payload: {
+        account: account,
+        contractCaller: contract-caller,
+        txSender: tx-sender
+      }
+    })
+    (ok true)
+  )
+)
+
+;; Reactivate an agent account (DAO/extension only)
+(define-public (reactivate-agent (account principal))
+  (let ((account-info (unwrap! (map-get? RegisteredAccounts account) ERR_ACCOUNT_NOT_FOUND)))
+    (try! (is-dao-or-extension))
+    (asserts! (not (get active account-info)) ERR_ACCOUNT_ALREADY_ACTIVE)
+    (map-set RegisteredAccounts account (merge account-info { active: true }))
+    (print {
+      notification: "agent-registry/reactivate-agent",
+      payload: {
+        account: account,
+        contractCaller: contract-caller,
+        txSender: tx-sender
+      }
+    })
+    (ok true)
+  )
+)
+
+;; ============================================================
 ;; READ-ONLY FUNCTIONS
 ;; ============================================================
 
@@ -275,6 +319,14 @@
 (define-read-only (is-attested-account (account principal) (min-level uint))
   (match (map-get? RegisteredAccounts account)
     info (>= (get attestation-level info) min-level)
+    false
+  )
+)
+
+;; Check if agent account is active
+(define-read-only (is-active-agent (account principal))
+  (match (map-get? RegisteredAccounts account)
+    info (get active info)
     false
   )
 )

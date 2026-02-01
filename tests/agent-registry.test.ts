@@ -22,6 +22,8 @@ const ERR_INVALID_ATTESTATION_LEVEL = 2005;
 const ERR_INVALID_PRINCIPAL = 2006;
 const ERR_ACCOUNT_IS_NOT_CONTRACT = 2007;
 const ERR_OWNER_MUST_BE_STANDARD = 2008;
+const ERR_ACCOUNT_ALREADY_ACTIVE = 2009;
+const ERR_ACCOUNT_ALREADY_INACTIVE = 2010;
 
 // Attestation levels
 const ATTESTATION_UNVERIFIED = 0;
@@ -374,6 +376,90 @@ describe("agent-registry: authorization patterns", function () {
   });
 });
 
+describe("agent-registry: deactivate-agent authorization", function () {
+  it("deactivate-agent() fails for non-DAO caller", function () {
+    // arrange
+    // act
+    const receipt = simnet.callPublicFn(
+      agentRegistryAddress,
+      "deactivate-agent",
+      [Cl.principal(agentRegistryAddress)],
+      wallet1
+    );
+    // assert - fails because account not registered
+    expect(receipt.result).toBeErr(Cl.uint(ERR_ACCOUNT_NOT_FOUND));
+  });
+
+  it("deactivate-agent() fails for unregistered account", function () {
+    // arrange
+    // act
+    const receipt = simnet.callPublicFn(
+      agentRegistryAddress,
+      "deactivate-agent",
+      [Cl.principal(agentRegistryAddress)],
+      deployer
+    );
+    // assert
+    expect(receipt.result).toBeErr(Cl.uint(ERR_ACCOUNT_NOT_FOUND));
+  });
+});
+
+describe("agent-registry: reactivate-agent authorization", function () {
+  it("reactivate-agent() fails for non-DAO caller", function () {
+    // arrange
+    // act
+    const receipt = simnet.callPublicFn(
+      agentRegistryAddress,
+      "reactivate-agent",
+      [Cl.principal(agentRegistryAddress)],
+      wallet1
+    );
+    // assert - fails because account not registered
+    expect(receipt.result).toBeErr(Cl.uint(ERR_ACCOUNT_NOT_FOUND));
+  });
+
+  it("reactivate-agent() fails for unregistered account", function () {
+    // arrange
+    // act
+    const receipt = simnet.callPublicFn(
+      agentRegistryAddress,
+      "reactivate-agent",
+      [Cl.principal(agentRegistryAddress)],
+      deployer
+    );
+    // assert
+    expect(receipt.result).toBeErr(Cl.uint(ERR_ACCOUNT_NOT_FOUND));
+  });
+});
+
+describe("agent-registry: is-active-agent read-only", function () {
+  it("is-active-agent() returns false for unregistered account", function () {
+    // arrange
+    // act
+    const result = simnet.callReadOnlyFn(
+      agentRegistryAddress,
+      "is-active-agent",
+      [Cl.principal(agentRegistryAddress)],
+      deployer
+    ).result;
+    // assert
+    expect(result).toStrictEqual(Cl.bool(false));
+  });
+
+  it("is-active-agent() returns false for unknown wallet", function () {
+    // arrange
+    // act
+    const result = simnet.callReadOnlyFn(
+      agentRegistryAddress,
+      "is-active-agent",
+      [Cl.principal(wallet3)],
+      deployer
+    ).result;
+    // assert
+    expect(result).toStrictEqual(Cl.bool(false));
+  });
+});
+
 describe("agent-registry: error codes documentation", function () {
   it("documents all error codes", function () {
     expect(ERR_NOT_DAO_OR_EXTENSION).toBe(2000);
@@ -385,6 +471,8 @@ describe("agent-registry: error codes documentation", function () {
     expect(ERR_INVALID_PRINCIPAL).toBe(2006);
     expect(ERR_ACCOUNT_IS_NOT_CONTRACT).toBe(2007);
     expect(ERR_OWNER_MUST_BE_STANDARD).toBe(2008);
+    expect(ERR_ACCOUNT_ALREADY_ACTIVE).toBe(2009);
+    expect(ERR_ACCOUNT_ALREADY_INACTIVE).toBe(2010);
   });
 
   it("documents attestation levels", function () {
