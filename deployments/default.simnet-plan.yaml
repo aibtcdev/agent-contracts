@@ -97,16 +97,6 @@ plan:
             path: contracts/checkin-registry.clar
             clarity-version: 3
         - emulated-contract-publish:
-            contract-name: dao-charter
-            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            path: contracts/extensions/dao-charter.clar
-            clarity-version: 3
-        - emulated-contract-publish:
-            contract-name: dao-epoch
-            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            path: contracts/extensions/dao-epoch.clar
-            clarity-version: 3
-        - emulated-contract-publish:
             contract-name: mock-sbtc
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/token/mock-sbtc.clar
@@ -115,6 +105,21 @@ plan:
             contract-name: dao-token
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/token/dao-token.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: core-proposals
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/extensions/core-proposals.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: dao-charter
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/extensions/dao-charter.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: dao-epoch
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/extensions/dao-epoch.clar
             clarity-version: 3
         - emulated-contract-publish:
             contract-name: dao-token-owner
@@ -135,5 +140,10 @@ plan:
             contract-name: manifesto
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/manifesto.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: test-proposal
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/proposals/test-proposal.clar
             clarity-version: 3
       epoch: "3.0"
