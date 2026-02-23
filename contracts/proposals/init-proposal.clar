@@ -27,6 +27,9 @@
     (try! (contract-call? .base-dao set-extension .core-proposals true))
     (try! (contract-call? .base-dao set-extension .agent-registry true))
 
+    ;; Set treasury address on dao-token so entrance tax flows to DAO treasury
+    (try! (contract-call? .dao-token set-treasury .dao-treasury))
+
     ;; Set initial charter
     (try! (contract-call? .dao-charter set-dao-charter INITIAL_CHARTER))
 
