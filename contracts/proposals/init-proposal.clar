@@ -34,6 +34,9 @@
     (try! (contract-call? .dao-treasury allow-asset .mock-sbtc true))
     (try! (contract-call? .dao-treasury allow-asset .dao-token true))
 
+    ;; Set treasury address so entrance tax flows to DAO treasury, not deployer
+    (try! (contract-call? .dao-token set-treasury .dao-treasury))
+
     ;; Print initialization info
     (print {
       notification: "init-proposal/execute",
