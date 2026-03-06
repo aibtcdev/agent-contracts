@@ -17,9 +17,9 @@ const daoTokenAddress = `${deployer}.dao-token`;
 const testProposalAddress = `${deployer}.test-proposal`;
 
 // The agent-account uses deployer as owner and wallet_2 as agent
-// (hardcoded in the contract constants)
-const accountOwner = deployer; // ACCOUNT_OWNER = ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM (deployer)
-const accountAgent = wallet2; // ACCOUNT_AGENT = ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG (wallet_2)
+// (set via initialize after deployment)
+const accountOwner = deployer;
+const accountAgent = wallet2;
 const unauthorized = wallet3;
 
 // Error codes
@@ -28,6 +28,8 @@ const ERR_OPERATION_NOT_ALLOWED = 4001;
 const ERR_CONTRACT_NOT_APPROVED = 4002;
 const ERR_INVALID_APPROVAL_TYPE = 4003;
 const ERR_ZERO_AMOUNT = 4004;
+const ERR_ALREADY_INITIALIZED = 4005;
+const ERR_NOT_INITIALIZED = 4006;
 
 // Permission flags
 const PERMISSION_MANAGE_ASSETS = 1; // pow(2, 0)
@@ -41,8 +43,101 @@ const APPROVED_CONTRACT_VOTING = 1;
 const APPROVED_CONTRACT_SWAP = 2;
 const APPROVED_CONTRACT_TOKEN = 3;
 
+// Helper: initialize the agent account with deployer as owner, wallet2 as agent
+function initializeAgentAccount() {
+  const receipt = simnet.callPublicFn(
+    agentAccountAddress,
+    "initialize",
+    [Cl.principal(accountOwner), Cl.principal(accountAgent)],
+    deployer
+  );
+  expect(receipt.result).toBeOk(Cl.bool(true));
+}
+
+describe("agent-account: initialization", function () {
+  it("initialize() succeeds for deployer", function () {
+    // arrange
+    // act
+    const receipt = simnet.callPublicFn(
+      agentAccountAddress,
+      "initialize",
+      [Cl.principal(accountOwner), Cl.principal(accountAgent)],
+      deployer
+    );
+    // assert
+    expect(receipt.result).toBeOk(Cl.bool(true));
+  });
+
+  it("initialize() fails for non-deployer", function () {
+    // arrange
+    // act
+    const receipt = simnet.callPublicFn(
+      agentAccountAddress,
+      "initialize",
+      [Cl.principal(accountOwner), Cl.principal(accountAgent)],
+      wallet1
+    );
+    // assert
+    expect(receipt.result).toBeErr(Cl.uint(ERR_CALLER_NOT_OWNER));
+  });
+
+  it("initialize() fails if called twice", function () {
+    // arrange
+    initializeAgentAccount();
+    // act
+    const receipt = simnet.callPublicFn(
+      agentAccountAddress,
+      "initialize",
+      [Cl.principal(accountOwner), Cl.principal(accountAgent)],
+      deployer
+    );
+    // assert
+    expect(receipt.result).toBeErr(Cl.uint(ERR_ALREADY_INITIALIZED));
+  });
+
+  it("operations fail before initialization", function () {
+    // arrange
+    // act
+    const receipt = simnet.callPublicFn(
+      agentAccountAddress,
+      "deposit-stx",
+      [Cl.uint(1000000)],
+      accountOwner
+    );
+    // assert
+    expect(receipt.result).toBeErr(Cl.uint(ERR_NOT_INITIALIZED));
+  });
+
+  it("get-config() returns error before initialization", function () {
+    // arrange
+    // act
+    const receipt = simnet.callPublicFn(
+      agentAccountAddress,
+      "get-config",
+      [],
+      deployer
+    );
+    // assert
+    expect(receipt.result).toBeErr(Cl.uint(ERR_NOT_INITIALIZED));
+  });
+
+  it("get-config() returns ok after initialization", function () {
+    // arrange
+    initializeAgentAccount();
+    // act
+    const receipt = simnet.callPublicFn(
+      agentAccountAddress,
+      "get-config",
+      [],
+      deployer
+    );
+    // assert
+    expect(receipt.result.type).toBe(ClarityType.ResponseOk);
+  });
+});
+
 describe("agent-account: initial state", function () {
-  it("get-configuration() returns valid contract configuration", function () {
+  it("get-configuration() returns valid contract configuration before init", function () {
     // arrange
     // act
     const result = simnet.callReadOnlyFn(
@@ -53,6 +148,42 @@ describe("agent-account: initial state", function () {
     ).result;
     // assert
     expect(result.type).toBe(ClarityType.Tuple);
+    expect(result).toStrictEqual(
+      Cl.tuple({
+        account: Cl.principal(agentAccountAddress),
+        owner: Cl.none(),
+        agent: Cl.none(),
+        initialized: Cl.bool(false),
+        deployer: Cl.principal(deployer),
+        deployedBurnBlock: Cl.uint(3),
+        deployedStacksBlock: Cl.uint(3),
+      })
+    );
+  });
+
+  it("get-configuration() returns principals after initialization", function () {
+    // arrange
+    initializeAgentAccount();
+    // act
+    const result = simnet.callReadOnlyFn(
+      agentAccountAddress,
+      "get-configuration",
+      [],
+      deployer
+    ).result;
+    // assert
+    expect(result.type).toBe(ClarityType.Tuple);
+    expect(result).toStrictEqual(
+      Cl.tuple({
+        account: Cl.principal(agentAccountAddress),
+        owner: Cl.some(Cl.principal(accountOwner)),
+        agent: Cl.some(Cl.principal(accountAgent)),
+        initialized: Cl.bool(true),
+        deployer: Cl.principal(deployer),
+        deployedBurnBlock: Cl.uint(3),
+        deployedStacksBlock: Cl.uint(3),
+      })
+    );
   });
 
   it("get-agent-permissions() returns default permissions", function () {
@@ -128,37 +259,12 @@ describe("agent-account: initial state", function () {
     // assert
     expect(result).toStrictEqual(Cl.bool(false));
   });
-
-  it("auto-registered with agent-registry on deploy", function () {
-    // arrange
-    // act
-    const result = simnet.callReadOnlyFn(
-      agentRegistryAddress,
-      "is-registered-account",
-      [Cl.principal(agentAccountAddress)],
-      deployer
-    ).result;
-    // assert
-    expect(result).toStrictEqual(Cl.bool(true));
-  });
-
-  it("agent-registry records correct owner and agent", function () {
-    // arrange
-    // act
-    const result = simnet.callReadOnlyFn(
-      agentRegistryAddress,
-      "get-account-info",
-      [Cl.principal(agentAccountAddress)],
-      deployer
-    ).result;
-    // assert
-    expect(result.type).toBe(ClarityType.OptionalSome);
-  });
 });
 
 describe("agent-account: STX deposit/withdraw", function () {
   it("deposit-stx() succeeds for owner", function () {
     // arrange
+    initializeAgentAccount();
     const amount = 1000000; // 1 STX
     // act
     const receipt = simnet.callPublicFn(
@@ -176,6 +282,7 @@ describe("agent-account: STX deposit/withdraw", function () {
 
   it("deposit-stx() succeeds for agent with permission", function () {
     // arrange
+    initializeAgentAccount();
     const amount = 500000;
     // act
     const receipt = simnet.callPublicFn(
@@ -190,6 +297,7 @@ describe("agent-account: STX deposit/withdraw", function () {
 
   it("deposit-stx() fails for unauthorized caller", function () {
     // arrange
+    initializeAgentAccount();
     const amount = 100000;
     // act
     const receipt = simnet.callPublicFn(
@@ -204,6 +312,7 @@ describe("agent-account: STX deposit/withdraw", function () {
 
   it("deposit-stx() fails for zero amount", function () {
     // arrange
+    initializeAgentAccount();
     // act
     const receipt = simnet.callPublicFn(
       agentAccountAddress,
@@ -217,6 +326,7 @@ describe("agent-account: STX deposit/withdraw", function () {
 
   it("withdraw-stx() succeeds for owner and sends to owner", function () {
     // arrange
+    initializeAgentAccount();
     const depositAmount = 2000000;
     const withdrawAmount = 1000000;
     simnet.callPublicFn(
@@ -241,6 +351,7 @@ describe("agent-account: STX deposit/withdraw", function () {
 
   it("withdraw-stx() succeeds for agent with permission", function () {
     // arrange
+    initializeAgentAccount();
     const depositAmount = 2000000;
     const withdrawAmount = 500000;
     simnet.callPublicFn(
@@ -262,6 +373,7 @@ describe("agent-account: STX deposit/withdraw", function () {
 
   it("withdraw-stx() fails for unauthorized caller", function () {
     // arrange
+    initializeAgentAccount();
     const amount = 100000;
     // act
     const receipt = simnet.callPublicFn(
@@ -278,6 +390,7 @@ describe("agent-account: STX deposit/withdraw", function () {
 describe("agent-account: FT deposit/withdraw", function () {
   it("deposit-ft() succeeds for owner", function () {
     // arrange
+    initializeAgentAccount();
     const amount = 1000;
     // First mint some mock-sbtc to owner
     simnet.callPublicFn(
@@ -299,6 +412,7 @@ describe("agent-account: FT deposit/withdraw", function () {
 
   it("deposit-ft() succeeds for agent with permission", function () {
     // arrange
+    initializeAgentAccount();
     const amount = 500;
     simnet.callPublicFn(
       mockSbtcAddress,
@@ -319,6 +433,7 @@ describe("agent-account: FT deposit/withdraw", function () {
 
   it("deposit-ft() fails for unauthorized caller", function () {
     // arrange
+    initializeAgentAccount();
     const amount = 100;
     simnet.callPublicFn(
       mockSbtcAddress,
@@ -339,6 +454,7 @@ describe("agent-account: FT deposit/withdraw", function () {
 
   it("withdraw-ft() requires approved token contract", function () {
     // arrange
+    initializeAgentAccount();
     const amount = 100;
     simnet.callPublicFn(
       mockSbtcAddress,
@@ -365,6 +481,7 @@ describe("agent-account: FT deposit/withdraw", function () {
 
   it("withdraw-ft() succeeds after token contract is approved", function () {
     // arrange
+    initializeAgentAccount();
     const amount = 100;
     simnet.callPublicFn(
       mockSbtcAddress,
@@ -400,6 +517,7 @@ describe("agent-account: FT deposit/withdraw", function () {
 describe("agent-account: contract approval/revocation", function () {
   it("approve-contract() succeeds for owner", function () {
     // arrange
+    initializeAgentAccount();
     // act
     const receipt = simnet.callPublicFn(
       agentAccountAddress,
@@ -421,6 +539,7 @@ describe("agent-account: contract approval/revocation", function () {
 
   it("approve-contract() succeeds for agent with permission", function () {
     // arrange
+    initializeAgentAccount();
     // act
     const receipt = simnet.callPublicFn(
       agentAccountAddress,
@@ -434,6 +553,7 @@ describe("agent-account: contract approval/revocation", function () {
 
   it("approve-contract() fails for unauthorized caller", function () {
     // arrange
+    initializeAgentAccount();
     // act
     const receipt = simnet.callPublicFn(
       agentAccountAddress,
@@ -447,6 +567,7 @@ describe("agent-account: contract approval/revocation", function () {
 
   it("approve-contract() fails for invalid type", function () {
     // arrange
+    initializeAgentAccount();
     // act
     const receipt = simnet.callPublicFn(
       agentAccountAddress,
@@ -460,6 +581,7 @@ describe("agent-account: contract approval/revocation", function () {
 
   it("revoke-contract() removes approval", function () {
     // arrange
+    initializeAgentAccount();
     simnet.callPublicFn(
       agentAccountAddress,
       "approve-contract",
@@ -489,6 +611,7 @@ describe("agent-account: contract approval/revocation", function () {
 describe("agent-account: permission management", function () {
   it("set-agent-can-manage-assets() succeeds for owner", function () {
     // arrange
+    initializeAgentAccount();
     // act - disable manage assets
     const receipt = simnet.callPublicFn(
       agentAccountAddress,
@@ -518,6 +641,7 @@ describe("agent-account: permission management", function () {
 
   it("set-agent-can-manage-assets() fails for non-owner", function () {
     // arrange
+    initializeAgentAccount();
     // act
     const receipt = simnet.callPublicFn(
       agentAccountAddress,
@@ -531,6 +655,7 @@ describe("agent-account: permission management", function () {
 
   it("set-agent-can-use-proposals() succeeds for owner", function () {
     // arrange
+    initializeAgentAccount();
     // act
     const receipt = simnet.callPublicFn(
       agentAccountAddress,
@@ -559,6 +684,7 @@ describe("agent-account: permission management", function () {
 
   it("set-agent-can-approve-revoke-contracts() succeeds for owner", function () {
     // arrange
+    initializeAgentAccount();
     // act
     const receipt = simnet.callPublicFn(
       agentAccountAddress,
@@ -587,6 +713,7 @@ describe("agent-account: permission management", function () {
 
   it("set-agent-can-buy-sell-assets() succeeds for owner", function () {
     // arrange
+    initializeAgentAccount();
     // act - enable buy/sell (disabled by default)
     const receipt = simnet.callPublicFn(
       agentAccountAddress,
@@ -615,6 +742,7 @@ describe("agent-account: permission management", function () {
 
   it("agent cannot deposit after permission is revoked", function () {
     // arrange
+    initializeAgentAccount();
     simnet.callPublicFn(
       agentAccountAddress,
       "set-agent-can-manage-assets",
@@ -634,6 +762,7 @@ describe("agent-account: permission management", function () {
 
   it("agent can deposit after permission is re-enabled", function () {
     // arrange
+    initializeAgentAccount();
     simnet.callPublicFn(
       agentAccountAddress,
       "set-agent-can-manage-assets",
@@ -659,6 +788,7 @@ describe("agent-account: permission management", function () {
 
   it("owner can always deposit regardless of agent permissions", function () {
     // arrange - disable agent manage assets
+    initializeAgentAccount();
     simnet.callPublicFn(
       agentAccountAddress,
       "set-agent-can-manage-assets",
@@ -678,8 +808,9 @@ describe("agent-account: permission management", function () {
 });
 
 describe("agent-account: get-config trait implementation", function () {
-  it("get-config() returns ok response", function () {
+  it("get-config() returns ok response after initialization", function () {
     // arrange
+    initializeAgentAccount();
     // act
     const receipt = simnet.callPublicFn(
       agentAccountAddress,
@@ -695,6 +826,7 @@ describe("agent-account: get-config trait implementation", function () {
 describe("agent-account: proposal interaction", function () {
   it("create-proposal() fails without approved voting contract", function () {
     // arrange
+    initializeAgentAccount();
     // act
     const receipt = simnet.callPublicFn(
       agentAccountAddress,
@@ -712,6 +844,7 @@ describe("agent-account: proposal interaction", function () {
 
   it("vote-on-proposal() fails without approved voting contract", function () {
     // arrange
+    initializeAgentAccount();
     // act
     const receipt = simnet.callPublicFn(
       agentAccountAddress,
@@ -729,6 +862,7 @@ describe("agent-account: proposal interaction", function () {
 
   it("conclude-proposal() fails without approved voting contract", function () {
     // arrange
+    initializeAgentAccount();
     // act
     const receipt = simnet.callPublicFn(
       agentAccountAddress,
@@ -746,6 +880,7 @@ describe("agent-account: proposal interaction", function () {
 
   it("agent cannot use proposals after permission is revoked", function () {
     // arrange
+    initializeAgentAccount();
     simnet.callPublicFn(
       agentAccountAddress,
       "approve-contract",
@@ -816,6 +951,7 @@ describe("agent-account: bit operations", function () {
 
   it("enabling buy-sell adds bit correctly", function () {
     // arrange
+    initializeAgentAccount();
     simnet.callPublicFn(
       agentAccountAddress,
       "set-agent-can-buy-sell-assets",
@@ -843,6 +979,7 @@ describe("agent-account: bit operations", function () {
 
   it("disabling all permissions results in 0", function () {
     // arrange
+    initializeAgentAccount();
     simnet.callPublicFn(
       agentAccountAddress,
       "set-agent-can-manage-assets",
@@ -894,6 +1031,8 @@ describe("agent-account: error codes documentation", function () {
     expect(ERR_CONTRACT_NOT_APPROVED).toBe(4002);
     expect(ERR_INVALID_APPROVAL_TYPE).toBe(4003);
     expect(ERR_ZERO_AMOUNT).toBe(4004);
+    expect(ERR_ALREADY_INITIALIZED).toBe(4005);
+    expect(ERR_NOT_INITIALIZED).toBe(4006);
   });
 
   it("documents permission flags", function () {

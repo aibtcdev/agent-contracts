@@ -19,7 +19,7 @@ const mockSbtcAddress = `${deployer}.mock-sbtc`;
 const daoTokenAddress = `${deployer}.dao-token`;
 
 // The agent-account uses deployer as owner and wallet_2 as agent
-// (hardcoded in the contract constants)
+// (set via initialize)
 const accountOwner = deployer;
 const accountAgent = wallet2;
 const unauthorized = wallet3;
@@ -37,6 +37,19 @@ const APPROVED_CONTRACT_TOKEN = 3;
 const ERR_CALLER_NOT_OWNER = 4000;
 const ERR_OPERATION_NOT_ALLOWED = 4001;
 const ERR_CONTRACT_NOT_APPROVED = 4002;
+const ERR_NOT_INITIALIZED = 4006;
+
+// Helper to initialize agent-account (must be called in every test that
+// interacts with agent-account public functions, since each test gets a
+// fresh simnet)
+function initializeAgentAccount() {
+  return simnet.callPublicFn(
+    agentAccountAddress,
+    "initialize",
+    [Cl.principal(accountOwner), Cl.principal(accountAgent)],
+    deployer
+  );
+}
 
 // Helper to mint mock sBTC
 function mintMockSbtc(amount: number, recipient: string) {
@@ -74,60 +87,70 @@ function constructDao() {
   );
 }
 
-describe("agent-workflow: agent-account registration", function () {
-  it("agent-account auto-registers with agent-registry on deploy", function () {
-    // arrange & act - contracts are deployed by simnet
+describe("agent-workflow: agent-account initialization", function () {
+  it("initialize() succeeds for deployer", function () {
+    // arrange & act
+    const receipt = initializeAgentAccount();
 
-    // assert - agent-account is registered
-    const isRegistered = simnet.callReadOnlyFn(
-      agentRegistryAddress,
-      "is-registered-account",
-      [Cl.principal(agentAccountAddress)],
-      deployer
-    ).result;
-    expect(isRegistered).toStrictEqual(Cl.bool(true));
+    // assert
+    expect(receipt.result).toBeOk(Cl.bool(true));
   });
 
-  it("agent-registry records correct account info", function () {
-    // arrange & act
+  it("get-config() works after initialization", function () {
+    // arrange
+    initializeAgentAccount();
 
-    // assert - get account info
-    const accountInfo = simnet.callReadOnlyFn(
-      agentRegistryAddress,
-      "get-account-info",
-      [Cl.principal(agentAccountAddress)],
+    // act
+    const configReceipt = simnet.callPublicFn(
+      agentAccountAddress,
+      "get-config",
+      [],
       deployer
-    ).result;
+    );
 
-    expect(accountInfo.type).toBe(ClarityType.OptionalSome);
-    if (accountInfo.type === ClarityType.OptionalSome && accountInfo.value.type === ClarityType.Tuple) {
-      expect(accountInfo.value.value.owner).toStrictEqual(Cl.principal(accountOwner));
-      expect(accountInfo.value.value.agent).toStrictEqual(Cl.principal(accountAgent));
-    }
+    // assert
+    expect(configReceipt.result).toBeOk(
+      Cl.tuple({
+        account: Cl.principal(agentAccountAddress),
+        agent: Cl.principal(accountAgent),
+        owner: Cl.principal(accountOwner),
+        "agent-can-manage-assets": Cl.bool(true),
+        "agent-can-use-proposals": Cl.bool(true),
+      })
+    );
   });
 
-  it("agent can be looked up by owner in registry", function () {
-    // arrange & act
-
-    // assert - lookup by owner
-    const account = simnet.callReadOnlyFn(
-      agentRegistryAddress,
-      "get-account-by-owner",
-      [Cl.principal(accountOwner)],
+  it("get-config() fails before initialization", function () {
+    // arrange & act - do NOT call initializeAgentAccount
+    const configReceipt = simnet.callPublicFn(
+      agentAccountAddress,
+      "get-config",
+      [],
       deployer
-    ).result;
+    );
 
-    // Should return the agent-account
-    expect(account.type).toBe(ClarityType.OptionalSome);
-    if (account.type === ClarityType.OptionalSome) {
-      expect(account.value).toStrictEqual(Cl.principal(agentAccountAddress));
-    }
+    // assert
+    expect(configReceipt.result).toBeErr(Cl.uint(ERR_NOT_INITIALIZED));
+  });
+
+  it("public functions return ERR_NOT_INITIALIZED before initialization", function () {
+    // arrange & act - do NOT call initializeAgentAccount
+    const depositReceipt = simnet.callPublicFn(
+      agentAccountAddress,
+      "deposit-stx",
+      [Cl.uint(1000)],
+      accountOwner
+    );
+
+    // assert
+    expect(depositReceipt.result).toBeErr(Cl.uint(ERR_NOT_INITIALIZED));
   });
 });
 
 describe("agent-workflow: token deposit flow", function () {
   it("owner deposits tokens to agent-account", function () {
     // arrange
+    initializeAgentAccount();
     const depositAmount = 1000000;
     mintMockSbtc(depositAmount, accountOwner);
 
@@ -145,6 +168,7 @@ describe("agent-workflow: token deposit flow", function () {
 
   it("agent deposits tokens with manage-assets permission", function () {
     // arrange
+    initializeAgentAccount();
     const depositAmount = 500000;
     mintMockSbtc(depositAmount, accountAgent);
 
@@ -162,6 +186,7 @@ describe("agent-workflow: token deposit flow", function () {
 
   it("unauthorized user cannot deposit", function () {
     // arrange
+    initializeAgentAccount();
     const depositAmount = 100000;
     mintMockSbtc(depositAmount, unauthorized);
 
@@ -180,7 +205,8 @@ describe("agent-workflow: token deposit flow", function () {
 
 describe("agent-workflow: proposal creation via agent-account", function () {
   it("agent creates proposal after voting contract approval", function () {
-    // arrange - construct DAO and approve voting contract
+    // arrange - initialize, construct DAO, and approve voting contract
+    initializeAgentAccount();
     constructDao();
     simnet.callPublicFn(
       agentAccountAddress,
@@ -229,7 +255,8 @@ describe("agent-workflow: proposal creation via agent-account", function () {
   });
 
   it("agent cannot create proposal without approved voting contract", function () {
-    // arrange - construct DAO but do NOT approve voting contract
+    // arrange - initialize, construct DAO but do NOT approve voting contract
+    initializeAgentAccount();
     constructDao();
 
     // act - agent tries to create proposal
@@ -252,6 +279,8 @@ describe("agent-workflow: proposal creation via agent-account", function () {
 describe("agent-workflow: permission management", function () {
   it("owner can revoke agent manage-assets permission", function () {
     // arrange
+    initializeAgentAccount();
+
     // act - revoke manage-assets
     const receipt = simnet.callPublicFn(
       agentAccountAddress,
@@ -276,7 +305,8 @@ describe("agent-workflow: permission management", function () {
   });
 
   it("agent cannot deposit after manage-assets permission revoked", function () {
-    // arrange - revoke permission
+    // arrange - initialize and revoke permission
+    initializeAgentAccount();
     simnet.callPublicFn(
       agentAccountAddress,
       "set-agent-can-manage-assets",
@@ -299,7 +329,8 @@ describe("agent-workflow: permission management", function () {
   });
 
   it("owner can still deposit after agent permission revoked", function () {
-    // arrange - revoke agent permission
+    // arrange - initialize and revoke agent permission
+    initializeAgentAccount();
     simnet.callPublicFn(
       agentAccountAddress,
       "set-agent-can-manage-assets",
@@ -322,7 +353,8 @@ describe("agent-workflow: permission management", function () {
   });
 
   it("owner can revoke and re-enable permissions", function () {
-    // arrange - revoke permission
+    // arrange - initialize and revoke permission
+    initializeAgentAccount();
     simnet.callPublicFn(
       agentAccountAddress,
       "set-agent-can-use-proposals",
@@ -362,7 +394,8 @@ describe("agent-workflow: permission management", function () {
   });
 
   it("agent cannot modify permissions (owner only)", function () {
-    // arrange & act - agent tries to modify permissions
+    // arrange & act - initialize, then agent tries to modify permissions
+    initializeAgentAccount();
     const receipt = simnet.callPublicFn(
       agentAccountAddress,
       "set-agent-can-manage-assets",
@@ -377,7 +410,10 @@ describe("agent-workflow: permission management", function () {
 
 describe("agent-workflow: contract approval flow", function () {
   it("owner approves and revokes voting contract", function () {
-    // arrange & act - approve
+    // arrange
+    initializeAgentAccount();
+
+    // act - approve
     const approveReceipt = simnet.callPublicFn(
       agentAccountAddress,
       "approve-contract",
@@ -415,7 +451,10 @@ describe("agent-workflow: contract approval flow", function () {
   });
 
   it("agent can approve contracts with permission", function () {
-    // arrange & act - agent approves token contract
+    // arrange
+    initializeAgentAccount();
+
+    // act - agent approves token contract
     const approveReceipt = simnet.callPublicFn(
       agentAccountAddress,
       "approve-contract",
@@ -437,7 +476,8 @@ describe("agent-workflow: contract approval flow", function () {
   });
 
   it("agent cannot approve contracts after permission revoked", function () {
-    // arrange - revoke approve/revoke permission
+    // arrange - initialize and revoke approve/revoke permission
+    initializeAgentAccount();
     simnet.callPublicFn(
       agentAccountAddress,
       "set-agent-can-approve-revoke-contracts",
@@ -460,7 +500,8 @@ describe("agent-workflow: contract approval flow", function () {
 
 describe("agent-workflow: voting via agent-account", function () {
   it("agent votes on proposal through agent-account", function () {
-    // arrange - construct DAO
+    // arrange - initialize and construct DAO
+    initializeAgentAccount();
     constructDao();
 
     // Approve voting contract for agent-account
@@ -486,7 +527,7 @@ describe("agent-workflow: voting via agent-account", function () {
     // Advance to voting period
     mineBlocks(VOTING_DELAY + 1);
 
-    // Give agent-account some DAO tokens
+    // Give agent-account some sBTC
     mintMockSbtc(5000000, accountOwner);
     simnet.callPublicFn(
       agentAccountAddress,
@@ -522,7 +563,8 @@ describe("agent-workflow: voting via agent-account", function () {
   });
 
   it("agent cannot vote without approved voting contract", function () {
-    // arrange - construct DAO but do NOT approve voting contract
+    // arrange - initialize, construct DAO but do NOT approve voting contract
+    initializeAgentAccount();
     constructDao();
 
     // Give wallet1 tokens to create proposal
@@ -557,7 +599,8 @@ describe("agent-workflow: voting via agent-account", function () {
   });
 
   it("agent cannot vote after use-proposals permission revoked", function () {
-    // arrange - construct DAO and approve voting contract
+    // arrange - initialize, construct DAO and approve voting contract
+    initializeAgentAccount();
     constructDao();
     simnet.callPublicFn(
       agentAccountAddress,
@@ -607,6 +650,7 @@ describe("agent-workflow: voting via agent-account", function () {
 describe("agent-workflow: STX handling", function () {
   it("owner deposits and withdraws STX", function () {
     // arrange
+    initializeAgentAccount();
     const depositAmount = 1000000;
 
     // act - deposit STX
@@ -634,6 +678,7 @@ describe("agent-workflow: STX handling", function () {
 
   it("agent deposits STX with permission", function () {
     // arrange
+    initializeAgentAccount();
     const depositAmount = 500000;
 
     // act - agent deposits STX
@@ -651,7 +696,8 @@ describe("agent-workflow: STX handling", function () {
 
 describe("agent-workflow: complete agent lifecycle", function () {
   it("full flow: deposit -> approve contract -> use contract -> withdraw", function () {
-    // arrange - construct DAO
+    // arrange - initialize and construct DAO
+    initializeAgentAccount();
     constructDao();
 
     // step 1: owner deposits tokens
