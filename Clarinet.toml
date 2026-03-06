@@ -73,7 +73,8 @@ epoch = "3.0"
 # Agent contracts (depend on base-dao)
 [contracts.agent-registry]
 path = "contracts/agent/agent-registry.clar"
-epoch = "3.0"
+epoch = "3.3"
+clarity_version = 4
 
 [contracts.agent-account]
 path = "contracts/agent/agent-account.clar"

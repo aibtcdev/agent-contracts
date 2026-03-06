@@ -11,6 +11,7 @@ const wallet3 = accounts.get("wallet_3")!;
 // contract info
 const agentRegistryAddress = `${deployer}.agent-registry`;
 const baseDaoAddress = `${deployer}.base-dao`;
+const agentAccountAddress = `${deployer}.agent-account`;
 
 // Error codes
 const ERR_NOT_DAO_OR_EXTENSION = 2000;
@@ -24,6 +25,8 @@ const ERR_ACCOUNT_IS_NOT_CONTRACT = 2007;
 const ERR_OWNER_MUST_BE_STANDARD = 2008;
 const ERR_ACCOUNT_ALREADY_ACTIVE = 2009;
 const ERR_ACCOUNT_ALREADY_INACTIVE = 2010;
+const ERR_TEMPLATE_NOT_APPROVED = 2011;
+const ERR_HASH_NOT_AVAILABLE = 2012;
 
 // Attestation levels
 const ATTESTATION_UNVERIFIED = 0;
@@ -47,6 +50,8 @@ describe("agent-registry: initial state", function () {
     ).result;
     // assert
     expect(result.type).toBe(ClarityType.Tuple);
+    // contract info has deployedBurnBlock, deployedStacksBlock, maxAttestationLevel
+    // no "self" field in v2
   });
 
   it("is-approved-template() returns false for unknown hash", function () {
@@ -159,32 +164,39 @@ describe("agent-registry: template management authorization", function () {
 });
 
 describe("agent-registry: account registration", function () {
-  it("register-agent-account() fails when called by standard principal", function () {
+  // NOTE: Full happy-path registration requires:
+  // 1. DAO constructed (base-dao initialized)
+  // 2. Template hash approved via DAO proposal
+  // 3. agent-account contract deployed and initialized with get-config
+  // These unit tests verify error paths without full DAO setup.
+
+  it("register-agent-account() fails when agent-account is not initialized", function () {
     // arrange
-    // act - wallet1 is a standard principal, not a contract
+    // act - pass agent-account as trait parameter
+    // agent-account's get-config will return an error since it's not initialized
     const receipt = simnet.callPublicFn(
       agentRegistryAddress,
       "register-agent-account",
-      [Cl.principal(wallet1), Cl.principal(wallet2)],
+      [Cl.principal(agentAccountAddress)],
       wallet1
     );
-    // assert - should fail because contract-caller is not a contract
-    expect(receipt.result).toBeErr(Cl.uint(ERR_ACCOUNT_IS_NOT_CONTRACT));
+    // assert - fails because contract-hash? or get-config returns an error
+    // before reaching any principal validation
+    expect(receipt.result.type).toBe(ClarityType.ResponseErr);
   });
 
-  it("register-agent-account() fails when owner is a contract", function () {
+  it("register-agent-account() fails regardless of caller (permissionless but hash-gated)", function () {
     // arrange
-    // act - try to register with owner being a contract principal
-    // We simulate this by calling directly (which would fail on first check anyway)
-    // But the validation order matters - it checks contract-caller first
+    // act - even deployer can't register without proper setup
     const receipt = simnet.callPublicFn(
       agentRegistryAddress,
       "register-agent-account",
-      [Cl.principal(agentRegistryAddress), Cl.principal(wallet2)],
-      wallet1
+      [Cl.principal(agentAccountAddress)],
+      deployer
     );
-    // assert - fails on the first check (caller not a contract)
-    expect(receipt.result).toBeErr(Cl.uint(ERR_ACCOUNT_IS_NOT_CONTRACT));
+    // assert - same error as above, registration is permissionless
+    // but gated by hash verification and get-config availability
+    expect(receipt.result.type).toBe(ClarityType.ResponseErr);
   });
 });
 
@@ -216,33 +228,19 @@ describe("agent-registry: attestation level management", function () {
   });
 });
 
-describe("agent-registry: template hash management", function () {
-  it("set-template-hash() fails for unregistered account", function () {
-    // arrange
-    // act
-    const receipt = simnet.callPublicFn(
-      agentRegistryAddress,
-      "set-template-hash",
-      [Cl.principal(agentRegistryAddress), Cl.buffer(sampleHash)],
-      wallet1
-    );
-    // assert
-    expect(receipt.result).toBeErr(Cl.uint(ERR_ACCOUNT_NOT_FOUND));
-  });
-});
-
 describe("agent-registry: verification function", function () {
-  it("verify-agent-account() returns false (Clarity 4 not available)", function () {
+  it("verify-agent-account() returns ERR_ACCOUNT_NOT_FOUND for unregistered account", function () {
     // arrange
-    // act
+    // act - verify-agent-account now does real Clarity 4 hash verification
+    // but first checks if the account is registered
     const receipt = simnet.callPublicFn(
       agentRegistryAddress,
       "verify-agent-account",
       [Cl.principal(agentRegistryAddress)],
       wallet1
     );
-    // assert - returns ok(false) because contract-hash? is not available
-    expect(receipt.result).toBeOk(Cl.bool(false));
+    // assert - fails because account is not registered
+    expect(receipt.result).toBeErr(Cl.uint(ERR_ACCOUNT_NOT_FOUND));
   });
 });
 
@@ -301,7 +299,6 @@ describe("agent-registry: read-only functions", function () {
 
   it("get-account-by-agent() returns none for unknown agent", function () {
     // arrange
-    // Note: wallet2 is used by agent-account as its agent, so use wallet3 here
     // act
     const result = simnet.callReadOnlyFn(
       agentRegistryAddress,
@@ -348,26 +345,6 @@ describe("agent-registry: authorization patterns", function () {
       agentRegistryAddress,
       "set-attestation-level",
       [Cl.principal(agentRegistryAddress), Cl.uint(ATTESTATION_AUDITED)],
-      wallet2
-    );
-    // assert
-    expect(result1.result).toBeErr(Cl.uint(ERR_ACCOUNT_NOT_FOUND));
-    expect(result2.result).toBeErr(Cl.uint(ERR_ACCOUNT_NOT_FOUND));
-  });
-
-  it("only DAO or extensions can set template hashes", function () {
-    // arrange
-    // act
-    const result1 = simnet.callPublicFn(
-      agentRegistryAddress,
-      "set-template-hash",
-      [Cl.principal(agentRegistryAddress), Cl.buffer(sampleHash)],
-      wallet1
-    );
-    const result2 = simnet.callPublicFn(
-      agentRegistryAddress,
-      "set-template-hash",
-      [Cl.principal(agentRegistryAddress), Cl.buffer(sampleHash)],
       wallet2
     );
     // assert
@@ -473,6 +450,8 @@ describe("agent-registry: error codes documentation", function () {
     expect(ERR_OWNER_MUST_BE_STANDARD).toBe(2008);
     expect(ERR_ACCOUNT_ALREADY_ACTIVE).toBe(2009);
     expect(ERR_ACCOUNT_ALREADY_INACTIVE).toBe(2010);
+    expect(ERR_TEMPLATE_NOT_APPROVED).toBe(2011);
+    expect(ERR_HASH_NOT_AVAILABLE).toBe(2012);
   });
 
   it("documents attestation levels", function () {

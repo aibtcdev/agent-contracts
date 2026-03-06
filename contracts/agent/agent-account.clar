@@ -1,7 +1,8 @@
 ;; title: agent-account
-;; version: 1.0.0
+;; version: 2.0.0
 ;; summary: A user-agent account contract for managing assets and DAO interactions.
-;; description: Hardcoded owner and agent principals with bit-based permissions.
+;; description: Deploy identical code, initialize once with owner and agent principals.
+;;              Same source code produces same contract-hash for registry verification.
 ;;              The owner has full access; the agent can perform allowed actions.
 ;;              Funds are always withdrawn to the owner address.
 
@@ -20,10 +21,7 @@
 (define-constant DEPLOYED_BURN_BLOCK burn-block-height)
 (define-constant DEPLOYED_STACKS_BLOCK stacks-block-height)
 (define-constant SELF (as-contract tx-sender))
-
-;; Hardcoded owner and agent addresses (template - deployer customizes)
-(define-constant ACCOUNT_OWNER 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM)
-(define-constant ACCOUNT_AGENT 'ST2CY5V39NHDPWSXMW9QDT3HC3GD6Q6XX4CFRK9AG)
+(define-constant DEPLOYER tx-sender)
 
 ;; Error codes
 (define-constant ERR_CALLER_NOT_OWNER (err u4000))
@@ -31,6 +29,8 @@
 (define-constant ERR_CONTRACT_NOT_APPROVED (err u4002))
 (define-constant ERR_INVALID_APPROVAL_TYPE (err u4003))
 (define-constant ERR_ZERO_AMOUNT (err u4004))
+(define-constant ERR_ALREADY_INITIALIZED (err u4005))
+(define-constant ERR_NOT_INITIALIZED (err u4006))
 
 ;; Permission flags (bit-based)
 (define-constant PERMISSION_MANAGE_ASSETS (pow u2 u0))            ;; 1
@@ -57,10 +57,39 @@
 
 ;; DATA VARS
 
+;; Account configuration (set once via initialize)
+(define-data-var initialized bool false)
+(define-data-var account-owner (optional principal) none)
+(define-data-var account-agent (optional principal) none)
+
 ;; Current agent permissions (can be modified by owner)
 (define-data-var agentPermissions uint DEFAULT_PERMISSIONS)
 
 ;; PUBLIC FUNCTIONS
+
+;; ============================================================
+;; INITIALIZATION (deployer only, one-time)
+;; ============================================================
+
+(define-public (initialize (owner principal) (agent principal))
+  (begin
+    (asserts! (is-eq tx-sender DEPLOYER) ERR_CALLER_NOT_OWNER)
+    (asserts! (not (var-get initialized)) ERR_ALREADY_INITIALIZED)
+    (var-set account-owner (some owner))
+    (var-set account-agent (some agent))
+    (var-set initialized true)
+    (print {
+      notification: "agent-account/initialized",
+      payload: {
+        account: SELF,
+        owner: owner,
+        agent: agent,
+        deployer: DEPLOYER
+      }
+    })
+    (ok true)
+  )
+)
 
 ;; ============================================================
 ;; ASSET MANAGEMENT
@@ -69,6 +98,7 @@
 ;; Deposit STX to the agent account
 (define-public (deposit-stx (amount uint))
   (begin
+    (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
     (asserts! (> amount u0) ERR_ZERO_AMOUNT)
     (asserts! (manage-assets-allowed) ERR_OPERATION_NOT_ALLOWED)
     (print {
@@ -87,6 +117,7 @@
 ;; Deposit fungible tokens to the agent account
 (define-public (deposit-ft (ft <ft-trait>) (amount uint))
   (begin
+    (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
     (asserts! (> amount u0) ERR_ZERO_AMOUNT)
     (asserts! (manage-assets-allowed) ERR_OPERATION_NOT_ALLOWED)
     (print {
@@ -105,7 +136,7 @@
 
 ;; Withdraw STX from the agent account (always to owner)
 (define-public (withdraw-stx (amount uint))
-  (begin
+  (let ((owner (unwrap! (var-get account-owner) ERR_NOT_INITIALIZED)))
     (asserts! (> amount u0) ERR_ZERO_AMOUNT)
     (asserts! (manage-assets-allowed) ERR_OPERATION_NOT_ALLOWED)
     (print {
@@ -114,17 +145,17 @@
         amount: amount,
         sender: SELF,
         caller: contract-caller,
-        recipient: ACCOUNT_OWNER
+        recipient: owner
       }
     })
-    (as-contract (stx-transfer? amount SELF ACCOUNT_OWNER))
+    (as-contract (stx-transfer? amount SELF owner))
   )
 )
 
 ;; Withdraw fungible tokens from the agent account (always to owner)
 ;; Token must be approved
 (define-public (withdraw-ft (ft <ft-trait>) (amount uint))
-  (begin
+  (let ((owner (unwrap! (var-get account-owner) ERR_NOT_INITIALIZED)))
     (asserts! (> amount u0) ERR_ZERO_AMOUNT)
     (asserts! (manage-assets-allowed) ERR_OPERATION_NOT_ALLOWED)
     (asserts! (is-approved-contract (contract-of ft) APPROVED_CONTRACT_TOKEN)
@@ -137,10 +168,10 @@
         assetContract: (contract-of ft),
         sender: SELF,
         caller: contract-caller,
-        recipient: ACCOUNT_OWNER
+        recipient: owner
       }
     })
-    (as-contract (contract-call? ft transfer amount SELF ACCOUNT_OWNER none))
+    (as-contract (contract-call? ft transfer amount SELF owner none))
   )
 )
 
@@ -155,6 +186,7 @@
     (memo (optional (string-ascii 1024)))
   )
   (begin
+    (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
     (asserts! (use-proposals-allowed) ERR_OPERATION_NOT_ALLOWED)
     (asserts!
       (is-approved-contract (contract-of votingContract) APPROVED_CONTRACT_VOTING)
@@ -180,6 +212,7 @@
     (vote bool)
   )
   (begin
+    (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
     (asserts! (use-proposals-allowed) ERR_OPERATION_NOT_ALLOWED)
     (asserts!
       (is-approved-contract (contract-of votingContract) APPROVED_CONTRACT_VOTING)
@@ -206,6 +239,7 @@
     (proposal <dao-proposal-trait>)
   )
   (begin
+    (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
     (asserts! (use-proposals-allowed) ERR_OPERATION_NOT_ALLOWED)
     (asserts!
       (is-approved-contract (contract-of votingContract) APPROVED_CONTRACT_VOTING)
@@ -232,6 +266,7 @@
 ;; Approve a contract for use with the agent account
 (define-public (approve-contract (contract principal) (type uint))
   (begin
+    (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
     (asserts! (is-valid-type type) ERR_INVALID_APPROVAL_TYPE)
     (asserts! (approve-revoke-contract-allowed) ERR_OPERATION_NOT_ALLOWED)
     (print {
@@ -251,6 +286,7 @@
 ;; Revoke a contract from use with the agent account
 (define-public (revoke-contract (contract principal) (type uint))
   (begin
+    (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
     (asserts! (is-valid-type type) ERR_INVALID_APPROVAL_TYPE)
     (asserts! (approve-revoke-contract-allowed) ERR_OPERATION_NOT_ALLOWED)
     (print {
@@ -274,6 +310,7 @@
 ;; Toggle agent's ability to manage assets (deposit/withdraw)
 (define-public (set-agent-can-manage-assets (canManage bool))
   (begin
+    (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
     (asserts! (is-owner) ERR_CALLER_NOT_OWNER)
     (print {
       notification: "agent-account/set-agent-can-manage-assets",
@@ -297,6 +334,7 @@
 ;; Toggle agent's ability to use proposal functions
 (define-public (set-agent-can-use-proposals (canUseProposals bool))
   (begin
+    (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
     (asserts! (is-owner) ERR_CALLER_NOT_OWNER)
     (print {
       notification: "agent-account/set-agent-can-use-proposals",
@@ -320,6 +358,7 @@
 ;; Toggle agent's ability to approve/revoke contracts
 (define-public (set-agent-can-approve-revoke-contracts (canApproveRevoke bool))
   (begin
+    (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
     (asserts! (is-owner) ERR_CALLER_NOT_OWNER)
     (print {
       notification: "agent-account/set-agent-can-approve-revoke-contracts",
@@ -343,6 +382,7 @@
 ;; Toggle agent's ability to buy/sell assets
 (define-public (set-agent-can-buy-sell-assets (canBuySell bool))
   (begin
+    (asserts! (var-get initialized) ERR_NOT_INITIALIZED)
     (asserts! (is-owner) ERR_CALLER_NOT_OWNER)
     (print {
       notification: "agent-account/set-agent-can-buy-sell-assets",
@@ -365,13 +405,18 @@
 
 ;; Get config (implements trait)
 (define-public (get-config)
-  (ok {
-    account: SELF,
-    agent: ACCOUNT_AGENT,
-    owner: ACCOUNT_OWNER,
-    agent-can-manage-assets: (not (is-eq u0 (bit-and (var-get agentPermissions) PERMISSION_MANAGE_ASSETS))),
-    agent-can-use-proposals: (not (is-eq u0 (bit-and (var-get agentPermissions) PERMISSION_USE_PROPOSALS)))
-  })
+  (let (
+    (owner (unwrap! (var-get account-owner) ERR_NOT_INITIALIZED))
+    (agent (unwrap! (var-get account-agent) ERR_NOT_INITIALIZED))
+  )
+    (ok {
+      account: SELF,
+      agent: agent,
+      owner: owner,
+      agent-can-manage-assets: (not (is-eq u0 (bit-and (var-get agentPermissions) PERMISSION_MANAGE_ASSETS))),
+      agent-can-use-proposals: (not (is-eq u0 (bit-and (var-get agentPermissions) PERMISSION_USE_PROPOSALS)))
+    })
+  )
 )
 
 ;; ============================================================
@@ -389,8 +434,10 @@
 (define-read-only (get-configuration)
   {
     account: SELF,
-    owner: ACCOUNT_OWNER,
-    agent: ACCOUNT_AGENT,
+    owner: (var-get account-owner),
+    agent: (var-get account-agent),
+    initialized: (var-get initialized),
+    deployer: DEPLOYER,
     deployedBurnBlock: DEPLOYED_BURN_BLOCK,
     deployedStacksBlock: DEPLOYED_STACKS_BLOCK
   }
@@ -435,12 +482,18 @@
 
 ;; Check if caller is the account owner
 (define-private (is-owner)
-  (is-eq contract-caller ACCOUNT_OWNER)
+  (match (var-get account-owner)
+    owner (is-eq contract-caller owner)
+    false
+  )
 )
 
 ;; Check if caller is the authorized agent
 (define-private (is-agent)
-  (is-eq contract-caller ACCOUNT_AGENT)
+  (match (var-get account-agent)
+    agent (is-eq contract-caller agent)
+    false
+  )
 )
 
 ;; Check if contract type is valid
@@ -481,19 +534,17 @@
 )
 
 ;; ============================================================
-;; INITIALIZATION
+;; DEPLOYMENT
 ;; ============================================================
 
 (begin
-  ;; Print creation event
   (print {
-    notification: "agent-account/created",
+    notification: "agent-account/deployed",
     payload: {
-      config: (get-configuration),
-      approvalTypes: (get-approval-types),
-      agentPermissions: (get-agent-permissions)
+      account: SELF,
+      deployer: DEPLOYER,
+      deployedBurnBlock: DEPLOYED_BURN_BLOCK,
+      deployedStacksBlock: DEPLOYED_STACKS_BLOCK
     }
   })
-  ;; Auto-register with agent registry
-  (contract-call? .agent-registry register-agent-account ACCOUNT_OWNER ACCOUNT_AGENT)
 )

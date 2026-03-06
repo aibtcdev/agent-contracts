@@ -1,12 +1,15 @@
 ;; title: agent-registry
-;; version: 1.0.0
-;; summary: Registry for verified agent accounts with template hash verification.
+;; version: 2.0.0
+;; summary: Registry for verified agent accounts with on-chain hash verification.
 ;; description: Tracks approved contract templates and registered agent accounts.
-;;              Designed to use contract-hash? when Clarity 4 is available.
-;;              Until then, provides manual attestation levels for trust.
+;;              Uses Clarity 4 contract-hash? to verify agent accounts match
+;;              approved templates during registration. Permissionless registration
+;;              gated by hash verification - same code, same hash, verified on-chain.
 
 ;; TRAITS
 (impl-trait .dao-traits.extension)
+
+(use-trait agent-account-config-trait .agent-traits.agent-account-config)
 
 ;; CONSTANTS
 
@@ -22,23 +25,25 @@
 (define-constant ERR_OWNER_MUST_BE_STANDARD (err u2008))
 (define-constant ERR_ACCOUNT_ALREADY_ACTIVE (err u2009))
 (define-constant ERR_ACCOUNT_ALREADY_INACTIVE (err u2010))
+(define-constant ERR_TEMPLATE_NOT_APPROVED (err u2011))
+(define-constant ERR_HASH_NOT_AVAILABLE (err u2012))
 
 ;; Attestation levels
 (define-constant ATTESTATION_UNVERIFIED u0)      ;; Default, no verification
 (define-constant ATTESTATION_REGISTERED u1)       ;; Registered but not hash-verified
-(define-constant ATTESTATION_HASH_VERIFIED u2)    ;; Hash matches approved template (future)
+(define-constant ATTESTATION_HASH_VERIFIED u2)    ;; Hash matches approved template
 (define-constant ATTESTATION_AUDITED u3)          ;; Manually audited and approved
 (define-constant MAX_ATTESTATION_LEVEL u3)
 
 ;; Contract details
 (define-constant DEPLOYED_BURN_BLOCK burn-block-height)
 (define-constant DEPLOYED_STACKS_BLOCK stacks-block-height)
-(define-constant SELF (as-contract tx-sender))
+;; Note: as-contract not available in Clarity 4 constants.
+;; Contract principal is derived at runtime where needed.
 
 ;; DATA MAPS
 
-;; Approved template hashes (for future contract-hash? verification)
-;; When Clarity 4 is available, agent-accounts can be verified against these hashes
+;; Approved template hashes for contract-hash? verification
 (define-map ApprovedTemplates (buff 32) {
   name: (string-ascii 64),
   version: uint,
@@ -47,7 +52,6 @@
 })
 
 ;; Registered agent accounts
-;; Stores ownership, agent address, verification status, and active state
 (define-map RegisteredAccounts principal {
   owner: principal,
   agent: principal,
@@ -73,7 +77,6 @@
 ;; ============================================================
 
 ;; Add an approved template hash (DAO/extension only)
-;; This is used to pre-approve contract templates before Clarity 4
 (define-public (add-approved-template (hash (buff 32)) (name (string-ascii 64)) (version uint))
   (begin
     (try! (is-dao-or-extension))
@@ -119,43 +122,50 @@
 )
 
 ;; ============================================================
-;; ACCOUNT REGISTRATION
+;; ACCOUNT REGISTRATION (permissionless, hash-verified)
 ;; ============================================================
 
-;; Register an agent account (called by the agent-account contract on deploy)
-;; The account is contract-caller, owner and agent are provided as params
-(define-public (register-agent-account (owner principal) (agent principal))
+;; Register an agent account by passing the contract as a trait.
+;; Verifies contract-hash? matches an approved template, then reads
+;; owner/agent from get-config. Anyone can call - the hash IS the gate.
+(define-public (register-agent-account (account <agent-account-config-trait>))
   (let (
-      (account contract-caller)
+      (account-principal (contract-of account))
+      (hash (unwrap! (contract-hash? account-principal) ERR_HASH_NOT_AVAILABLE))
+      (config (try! (contract-call? account get-config)))
+      (owner (get owner config))
+      (agent (get agent config))
     )
-    ;; Validate that account is a contract (has name component)
-    (try! (validate-is-contract account))
-    ;; Validate that owner is a standard principal (no contract name)
+    ;; Verify hash matches an approved template
+    (asserts! (is-approved-template hash) ERR_TEMPLATE_NOT_APPROVED)
+    ;; Validate principals
+    (try! (validate-is-contract account-principal))
     (try! (validate-is-standard-principal owner))
     ;; Check not already registered
     (asserts!
-      (is-none (map-get? RegisteredAccounts account))
+      (is-none (map-get? RegisteredAccounts account-principal))
       ERR_ACCOUNT_ALREADY_REGISTERED
     )
-    ;; Register the account with attestation level 1 (registered but not hash-verified)
-    (map-insert RegisteredAccounts account {
+    ;; Register with hash-verified attestation
+    (map-insert RegisteredAccounts account-principal {
       owner: owner,
       agent: agent,
-      template-hash: none,
+      template-hash: (some hash),
       registered-at: stacks-block-height,
-      attestation-level: ATTESTATION_REGISTERED,
+      attestation-level: ATTESTATION_HASH_VERIFIED,
       active: true
     })
     ;; Set up lookup maps
-    (map-insert OwnerToAccount owner account)
-    (map-insert AgentToAccount agent account)
+    (map-insert OwnerToAccount owner account-principal)
+    (map-insert AgentToAccount agent account-principal)
     (print {
       notification: "agent-registry/register-agent-account",
       payload: {
-        account: account,
+        account: account-principal,
         owner: owner,
         agent: agent,
-        attestationLevel: ATTESTATION_REGISTERED,
+        templateHash: hash,
+        attestationLevel: ATTESTATION_HASH_VERIFIED,
         contractCaller: contract-caller,
         txSender: tx-sender
       }
@@ -168,48 +178,36 @@
 ;; VERIFICATION FUNCTIONS
 ;; ============================================================
 
-;; Verify an agent account against approved templates
-;; TODO: When Clarity 4 is available, this will use contract-hash?
-;;
-;; Future implementation:
-;; (define-public (verify-agent-account (account principal))
-;;   (let (
-;;       (hash (try! (contract-hash? account)))
-;;       (template (map-get? ApprovedTemplates hash))
-;;     )
-;;     (match template
-;;       t (if (get active t)
-;;           (begin
-;;             (try! (set-template-hash account hash))
-;;             (try! (set-attestation-internal account ATTESTATION_HASH_VERIFIED))
-;;             (ok true)
-;;           )
-;;           (ok false)
-;;         )
-;;       (ok false)
-;;     )
-;;   )
-;; )
-;;
-;; For now, returns false and requires manual attestation
+;; Verify an already-registered account against approved templates.
+;; Useful for upgrading attestation on accounts registered before
+;; their template was approved, or re-verifying after template updates.
 (define-public (verify-agent-account (account principal))
-  (begin
-    ;; Placeholder - contract-hash? not available in Clarity 3
-    ;; In production Clarity 4, this would verify the contract hash
+  (let (
+      (account-info (unwrap! (map-get? RegisteredAccounts account) ERR_ACCOUNT_NOT_FOUND))
+      (hash (unwrap! (contract-hash? account) ERR_HASH_NOT_AVAILABLE))
+    )
+    (asserts! (is-approved-template hash) ERR_TEMPLATE_NOT_APPROVED)
+    (map-set RegisteredAccounts account (merge account-info {
+      template-hash: (some hash),
+      attestation-level: ATTESTATION_HASH_VERIFIED
+    }))
     (print {
       notification: "agent-registry/verify-agent-account",
       payload: {
         account: account,
-        result: "contract-hash-not-available",
-        message: "Clarity 4 required for hash verification"
+        templateHash: hash,
+        previousLevel: (get attestation-level account-info),
+        newLevel: ATTESTATION_HASH_VERIFIED,
+        contractCaller: contract-caller,
+        txSender: tx-sender
       }
     })
-    (ok false)
+    (ok true)
   )
 )
 
 ;; Set attestation level manually (DAO/extension only)
-;; Used for manual audits or when contract-hash? is not available
+;; Used for manual audits or upgrading to AUDITED level
 (define-public (set-attestation-level (account principal) (level uint))
   (let ((account-info (unwrap! (map-get? RegisteredAccounts account) ERR_ACCOUNT_NOT_FOUND)))
     (try! (is-dao-or-extension))
@@ -221,30 +219,6 @@
         account: account,
         previousLevel: (get attestation-level account-info),
         newLevel: level,
-        contractCaller: contract-caller,
-        txSender: tx-sender
-      }
-    })
-    (ok true)
-  )
-)
-
-;; Set template hash for an account (DAO/extension only)
-;; This is for when we know the hash but can't use contract-hash? yet
-(define-public (set-template-hash (account principal) (hash (buff 32)))
-  (let ((account-info (unwrap! (map-get? RegisteredAccounts account) ERR_ACCOUNT_NOT_FOUND)))
-    (try! (is-dao-or-extension))
-    ;; Verify the template hash is approved
-    (asserts!
-      (is-approved-template hash)
-      ERR_TEMPLATE_NOT_FOUND
-    )
-    (map-set RegisteredAccounts account (merge account-info { template-hash: (some hash) }))
-    (print {
-      notification: "agent-registry/set-template-hash",
-      payload: {
-        account: account,
-        templateHash: hash,
         contractCaller: contract-caller,
         txSender: tx-sender
       }
@@ -365,7 +339,6 @@
 ;; Get contract info
 (define-read-only (get-contract-info)
   {
-    self: SELF,
     deployedBurnBlock: DEPLOYED_BURN_BLOCK,
     deployedStacksBlock: DEPLOYED_STACKS_BLOCK,
     maxAttestationLevel: MAX_ATTESTATION_LEVEL
