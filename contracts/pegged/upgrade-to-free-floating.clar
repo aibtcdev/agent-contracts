@@ -270,6 +270,8 @@
           ;; Pro-rata sBTC based on claim-balance (snapshotted)
           (sbtc-refund (/ (* claim-balance backing) supply))
         )
+        ;; [L8 FIX] Prevent dust burn for 0 sBTC refund
+        (asserts! (> sbtc-refund u0) ERR_ZERO_BALANCE)
         ;; Burn only the claim-balance amount of tokens
         (try! (contract-call? .token-pegged dao-burn claim-balance claimer))
         ;; Send sBTC from token contract backing

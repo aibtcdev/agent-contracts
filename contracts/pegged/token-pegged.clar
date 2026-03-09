@@ -146,6 +146,7 @@
     (asserts! (var-get pegged) ERR_PEGGED_MODE_ONLY)
     (asserts! (> amount u0) ERR_ZERO_AMOUNT)
     (asserts! (>= balance amount) ERR_INSUFFICIENT_BALANCE)
+    (asserts! (> sbtc-out u0) ERR_ZERO_AMOUNT) ;; [L8 FIX] Prevent dust burn for 0 sBTC
     (asserts! (>= backing sbtc-out) ERR_INSUFFICIENT_BACKING)
     ;; Burn tokens
     (try! (ft-burn? pegged-dao-token amount sender))
