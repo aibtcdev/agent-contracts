@@ -1,13 +1,14 @@
 ;; title: auto-micro-payout
-;; version: 1.0.0
+;; version: 1.1.0
 ;; summary: Automatic micro-payouts for verified agent work.
 ;; description: Pays 100-500 sats from treasury for verified work such as
-;; x402 replies, check-ins, inscriptions, and other ERC-8004 proof-of-work.
+;; check-ins and proofs. Verifies work against on-chain registries before paying.
 ;; No vote required. Rate-limited per agent per epoch.
+;; [C2 FIX] Verifies work on-chain instead of trusting caller claims.
+;; [M2 FIX] Hardcodes sBTC - no ft trait parameter.
 
 ;; TRAITS
 (impl-trait .dao-traits.extension)
-(use-trait ft-trait 'SP3FBR2AGK5H9QBDH3EEN6DF8EK8JY7RX8QJ5SVTE.sip-010-trait-ft-standard.sip-010-trait)
 
 ;; CONSTANTS
 (define-constant SELF (as-contract tx-sender))
@@ -23,13 +24,12 @@
 (define-constant ERR_INVALID_WORK_TYPE (err u6203))
 (define-constant ERR_ALREADY_CLAIMED (err u6204))
 (define-constant ERR_PAUSED (err u6205))
+(define-constant ERR_WORK_NOT_VERIFIED (err u6206))
 
 ;; Work type constants
 (define-constant WORK_TYPE_CHECKIN u1)
-(define-constant WORK_TYPE_X402_REPLY u2)
-(define-constant WORK_TYPE_INSCRIPTION u3)
-(define-constant WORK_TYPE_SIGNAL u4)
-(define-constant WORK_TYPE_BOUNTY u5)
+(define-constant WORK_TYPE_PROOF u2)
+(define-constant WORK_TYPE_GUARDIAN_APPROVED u3)
 
 ;; DATA VARS
 (define-data-var paused bool false)
@@ -53,6 +53,13 @@
 ;; Configurable payout amounts per work type
 (define-map PayoutAmounts uint uint)
 
+;; Guardian-approved work items (for work types that can't be verified on-chain)
+;; Only guardians can approve work for payout
+(define-map ApprovedWork
+  { agent: principal, work-id: uint }
+  { approved-by: principal, amount: uint }
+)
+
 ;; ============================================================
 ;; EXTENSION CALLBACK
 ;; ============================================================
@@ -70,57 +77,138 @@
   (begin
     (try! (is-dao-or-extension))
     (asserts! (and (>= amount MIN_PAYOUT) (<= amount MAX_PAYOUT)) ERR_INVALID_AMOUNT)
-    (asserts! (and (>= work-type u1) (<= work-type u5)) ERR_INVALID_WORK_TYPE)
+    (asserts! (and (>= work-type u1) (<= work-type u3)) ERR_INVALID_WORK_TYPE)
     (map-set PayoutAmounts work-type amount)
     (ok true)
   )
 )
 
 ;; ============================================================
-;; CLAIM PAYOUT FOR VERIFIED WORK
+;; GUARDIAN APPROVAL (for work that can't be verified on-chain)
 ;; ============================================================
 
-;; Agent claims payout for completed work
-;; work-type: 1=checkin, 2=x402_reply, 3=inscription, 4=signal, 5=bounty
-;; work-id: unique identifier for the work (e.g., check-in index, tx nonce)
-(define-public (claim-payout (ft <ft-trait>) (work-type uint) (work-id uint))
+;; Guardian pre-approves a work item for an agent
+;; This covers x402 replies, inscriptions, signals, bounties, etc.
+(define-public (approve-work (agent principal) (work-id uint) (amount uint))
+  (begin
+    (asserts! (contract-call? .guardian-council is-guardian tx-sender) ERR_NOT_AUTHORIZED)
+    (asserts! (and (>= amount MIN_PAYOUT) (<= amount MAX_PAYOUT)) ERR_INVALID_AMOUNT)
+    (map-set ApprovedWork
+      { agent: agent, work-id: work-id }
+      { approved-by: tx-sender, amount: amount }
+    )
+    (print {
+      notification: "auto-micro-payout/approve-work",
+      payload: { guardian: tx-sender, agent: agent, work-id: work-id, amount: amount }
+    })
+    (ok true)
+  )
+)
+
+;; ============================================================
+;; CLAIM PAYOUT FOR VERIFIED WORK
+;; [C2 FIX] Each work type is verified against on-chain state
+;; ============================================================
+
+;; Claim payout for a verified check-in
+;; work-id = the check-in index from checkin-registry
+(define-public (claim-checkin-payout (checkin-index uint))
   (let
     (
       (agent tx-sender)
       (current-epoch (get-current-epoch))
       (epoch-payouts (get-agent-epoch-payouts agent current-epoch))
-      (payout-amount (get-payout-for-type work-type))
+      (payout-amount (get-payout-for-type WORK_TYPE_CHECKIN))
+      ;; Verify the check-in exists on-chain for this agent
+      (checkin-data (contract-call? .checkin-registry get-checkin agent checkin-index))
     )
     (asserts! (not (var-get paused)) ERR_PAUSED)
-    (asserts! (and (>= work-type u1) (<= work-type u5)) ERR_INVALID_WORK_TYPE)
     (asserts! (> payout-amount u0) ERR_INVALID_AMOUNT)
-    ;; Rate limit: max payouts per epoch
+    (asserts! (< epoch-payouts MAX_PAYOUTS_PER_EPOCH) ERR_RATE_LIMITED)
+    ;; [C2 FIX] Verify check-in actually exists for this agent
+    (asserts! (is-some checkin-data) ERR_WORK_NOT_VERIFIED)
+    ;; Prevent double-claims
+    (asserts!
+      (map-insert WorkClaims { agent: agent, work-type: WORK_TYPE_CHECKIN, work-id: checkin-index } true)
+      ERR_ALREADY_CLAIMED
+    )
+    ;; Update counters and pay
+    (map-set AgentEpochPayouts { agent: agent, epoch: current-epoch } (+ epoch-payouts u1))
+    (var-set total-paid (+ (var-get total-paid) payout-amount))
+    (var-set total-payouts (+ (var-get total-payouts) u1))
+    ;; [M2 FIX] Hardcoded sBTC - no ft trait parameter
+    (try! (contract-call? .dao-treasury withdraw-ft .mock-sbtc payout-amount agent))
+    (print {
+      notification: "auto-micro-payout/claim-checkin",
+      payload: { agent: agent, checkin-index: checkin-index, amount: payout-amount, epoch: current-epoch }
+    })
+    (ok payout-amount)
+  )
+)
+
+;; Claim payout for a verified proof submission
+;; work-id = the proof index from proof-registry
+(define-public (claim-proof-payout (proof-index uint))
+  (let
+    (
+      (agent tx-sender)
+      (current-epoch (get-current-epoch))
+      (epoch-payouts (get-agent-epoch-payouts agent current-epoch))
+      (payout-amount (get-payout-for-type WORK_TYPE_PROOF))
+      ;; Verify the proof exists on-chain for this agent
+      (proof-data (contract-call? .proof-registry get-proof agent proof-index))
+    )
+    (asserts! (not (var-get paused)) ERR_PAUSED)
+    (asserts! (> payout-amount u0) ERR_INVALID_AMOUNT)
+    (asserts! (< epoch-payouts MAX_PAYOUTS_PER_EPOCH) ERR_RATE_LIMITED)
+    ;; [C2 FIX] Verify proof actually exists for this agent
+    (asserts! (is-some proof-data) ERR_WORK_NOT_VERIFIED)
+    ;; Prevent double-claims
+    (asserts!
+      (map-insert WorkClaims { agent: agent, work-type: WORK_TYPE_PROOF, work-id: proof-index } true)
+      ERR_ALREADY_CLAIMED
+    )
+    ;; Update counters and pay
+    (map-set AgentEpochPayouts { agent: agent, epoch: current-epoch } (+ epoch-payouts u1))
+    (var-set total-paid (+ (var-get total-paid) payout-amount))
+    (var-set total-payouts (+ (var-get total-payouts) u1))
+    (try! (contract-call? .dao-treasury withdraw-ft .mock-sbtc payout-amount agent))
+    (print {
+      notification: "auto-micro-payout/claim-proof",
+      payload: { agent: agent, proof-index: proof-index, amount: payout-amount, epoch: current-epoch }
+    })
+    (ok payout-amount)
+  )
+)
+
+;; Claim payout for guardian-approved work (x402, inscriptions, signals, bounties)
+;; Guardian must have called approve-work first
+(define-public (claim-approved-payout (work-id uint))
+  (let
+    (
+      (agent tx-sender)
+      (current-epoch (get-current-epoch))
+      (epoch-payouts (get-agent-epoch-payouts agent current-epoch))
+      ;; Verify guardian approval exists
+      (approval (unwrap! (map-get? ApprovedWork { agent: agent, work-id: work-id }) ERR_WORK_NOT_VERIFIED))
+      (payout-amount (get amount approval))
+    )
+    (asserts! (not (var-get paused)) ERR_PAUSED)
     (asserts! (< epoch-payouts MAX_PAYOUTS_PER_EPOCH) ERR_RATE_LIMITED)
     ;; Prevent double-claims
     (asserts!
-      (map-insert WorkClaims { agent: agent, work-type: work-type, work-id: work-id } true)
+      (map-insert WorkClaims { agent: agent, work-type: WORK_TYPE_GUARDIAN_APPROVED, work-id: work-id } true)
       ERR_ALREADY_CLAIMED
     )
-    ;; Update epoch counter
-    (map-set AgentEpochPayouts
-      { agent: agent, epoch: current-epoch }
-      (+ epoch-payouts u1)
-    )
-    ;; Update totals
+    ;; Update counters and pay
+    (map-set AgentEpochPayouts { agent: agent, epoch: current-epoch } (+ epoch-payouts u1))
     (var-set total-paid (+ (var-get total-paid) payout-amount))
     (var-set total-payouts (+ (var-get total-payouts) u1))
-    ;; Pay from treasury
-    (try! (contract-call? .dao-treasury withdraw-ft ft payout-amount agent))
+    (try! (contract-call? .dao-treasury withdraw-ft .mock-sbtc payout-amount agent))
     (print {
-      notification: "auto-micro-payout/claim",
-      payload: {
-        agent: agent,
-        work-type: work-type,
-        work-id: work-id,
-        amount: payout-amount,
-        epoch: current-epoch,
-        epoch-payouts: (+ epoch-payouts u1)
-      }
+      notification: "auto-micro-payout/claim-approved",
+      payload: { agent: agent, work-id: work-id, amount: payout-amount,
+                 approved-by: (get approved-by approval), epoch: current-epoch }
     })
     (ok payout-amount)
   )
@@ -156,6 +244,10 @@
 
 (define-read-only (has-claimed (agent principal) (work-type uint) (work-id uint))
   (is-some (map-get? WorkClaims { agent: agent, work-type: work-type, work-id: work-id }))
+)
+
+(define-read-only (get-approved-work (agent principal) (work-id uint))
+  (map-get? ApprovedWork { agent: agent, work-id: work-id })
 )
 
 (define-read-only (get-stats)

@@ -71,9 +71,11 @@
 ;; ============================================================
 
 ;; Advance to Phase 2 (called by upgrade-to-free-floating on successful vote)
+;; [L4 FIX] Only accepts valid phase values (1 or 2)
 (define-public (set-phase (new-phase uint))
   (begin
     (try! (is-dao-or-extension))
+    (asserts! (or (is-eq new-phase u1) (is-eq new-phase u2)) ERR_NOT_AUTHORIZED)
     (var-set phase new-phase)
     (print {
       notification: "dao-pegged/phase-change",

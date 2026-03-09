@@ -89,6 +89,7 @@
 ;; ============================================================
 
 ;; Deposit sBTC, receive tokens. Entrance tax goes to treasury.
+;; [M3 FIX] Requires initialization before deposits accepted
 (define-public (deposit (amount uint))
   (let
     (
@@ -97,6 +98,7 @@
       (tax (calculate-tax amount))
       (tokens-to-mint (- amount tax))
     )
+    (asserts! (var-get initialized) ERR_NOT_AUTHORIZED)
     (asserts! (var-get pegged) ERR_PEGGED_MODE_ONLY)
     (asserts! (> amount u0) ERR_ZERO_AMOUNT)
     (asserts! (> tokens-to-mint u0) ERR_ZERO_AMOUNT)
@@ -126,6 +128,7 @@
 ;; ============================================================
 
 ;; Burn tokens, receive pro-rata sBTC. No exit tax.
+;; [M3 FIX] Requires initialization
 (define-public (redeem (amount uint))
   (let
     (
@@ -139,6 +142,7 @@
         (/ (* amount backing) supply)
       ))
     )
+    (asserts! (var-get initialized) ERR_NOT_AUTHORIZED)
     (asserts! (var-get pegged) ERR_PEGGED_MODE_ONLY)
     (asserts! (> amount u0) ERR_ZERO_AMOUNT)
     (asserts! (>= balance amount) ERR_INSUFFICIENT_BALANCE)
@@ -161,18 +165,18 @@
 ;; DAO-ONLY FUNCTIONS
 ;; ============================================================
 
-;; Mint tokens to a recipient (used by upgrade contract for yes-voters)
+;; [M1 FIX] Mint tokens - restricted to upgrade extension only (not any extension)
 (define-public (dao-mint (amount uint) (recipient principal))
   (begin
-    (try! (is-dao-or-extension))
+    (asserts! (is-upgrade-extension) ERR_NOT_AUTHORIZED)
     (ft-mint? pegged-dao-token amount recipient)
   )
 )
 
-;; Burn tokens from a holder (used by upgrade contract)
+;; [M1 FIX] Burn tokens from a holder - restricted to upgrade extension only
 (define-public (dao-burn (amount uint) (holder principal))
   (begin
-    (try! (is-dao-or-extension))
+    (asserts! (is-upgrade-extension) ERR_NOT_AUTHORIZED)
     (ft-burn? pegged-dao-token amount holder)
   )
 )
@@ -271,4 +275,12 @@
     )
     ERR_NOT_AUTHORIZED
   ))
+)
+
+;; [M1 FIX] Only the upgrade extension can mint/burn tokens
+(define-private (is-upgrade-extension)
+  (or
+    (is-eq contract-caller .upgrade-to-free-floating)
+    (is-eq tx-sender .base-dao)
+  )
 )

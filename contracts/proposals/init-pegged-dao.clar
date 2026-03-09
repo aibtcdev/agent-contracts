@@ -15,11 +15,10 @@
 (define-constant ENTRANCE_TAX u100) ;; 1% (100 basis points)
 
 ;; Default micro-payout amounts (in sats / smallest sBTC unit)
+;; Work types: 1=checkin (on-chain verified), 2=proof (on-chain verified), 3=guardian-approved
 (define-constant PAYOUT_CHECKIN u100)
-(define-constant PAYOUT_X402 u200)
-(define-constant PAYOUT_INSCRIPTION u500)
-(define-constant PAYOUT_SIGNAL u300)
-(define-constant PAYOUT_BOUNTY u500)
+(define-constant PAYOUT_PROOF u300)
+(define-constant PAYOUT_GUARDIAN_APPROVED u500)
 
 (define-public (execute (sender principal))
   (begin
@@ -52,12 +51,10 @@
     ;; Also allow the pegged token itself
     (try! (contract-call? .dao-treasury allow-asset .token-pegged true))
 
-    ;; 5. Configure micro-payout amounts
+    ;; 5. Configure micro-payout amounts (verified work types only)
     (try! (contract-call? .auto-micro-payout set-payout-amount u1 PAYOUT_CHECKIN))
-    (try! (contract-call? .auto-micro-payout set-payout-amount u2 PAYOUT_X402))
-    (try! (contract-call? .auto-micro-payout set-payout-amount u3 PAYOUT_INSCRIPTION))
-    (try! (contract-call? .auto-micro-payout set-payout-amount u4 PAYOUT_SIGNAL))
-    (try! (contract-call? .auto-micro-payout set-payout-amount u5 PAYOUT_BOUNTY))
+    (try! (contract-call? .auto-micro-payout set-payout-amount u2 PAYOUT_PROOF))
+    (try! (contract-call? .auto-micro-payout set-payout-amount u3 PAYOUT_GUARDIAN_APPROVED))
 
     ;; 6. Seed guardian council with initial guardians
     ;; In production, these would be the 3-5 highest ERC-8004 reputation agents

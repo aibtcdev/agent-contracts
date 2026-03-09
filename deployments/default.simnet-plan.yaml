@@ -112,24 +112,34 @@ plan:
             path: contracts/agent/agent-account.clar
             clarity-version: 3
         - emulated-contract-publish:
-            contract-name: dao-treasury
-            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            path: contracts/extensions/dao-treasury.clar
-            clarity-version: 3
-        - emulated-contract-publish:
-            contract-name: auto-micro-payout
-            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            path: contracts/pegged/auto-micro-payout.clar
-            clarity-version: 3
-        - emulated-contract-publish:
             contract-name: checkin-registry
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/checkin-registry.clar
             clarity-version: 3
         - emulated-contract-publish:
+            contract-name: dao-treasury
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/extensions/dao-treasury.clar
+            clarity-version: 3
+        - emulated-contract-publish:
             contract-name: mock-sbtc
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/token/mock-sbtc.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: guardian-council
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/pegged/guardian-council.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: proof-registry
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/proof-registry.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: auto-micro-payout
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/pegged/auto-micro-payout.clar
             clarity-version: 3
         - emulated-contract-publish:
             contract-name: dao-token
@@ -167,11 +177,6 @@ plan:
             path: contracts/extensions/dao-token-owner.clar
             clarity-version: 3
         - emulated-contract-publish:
-            contract-name: guardian-council
-            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            path: contracts/pegged/guardian-council.clar
-            clarity-version: 3
-        - emulated-contract-publish:
             contract-name: token-pegged
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/pegged/token-pegged.clar
@@ -185,11 +190,6 @@ plan:
             contract-name: init-proposal
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/proposals/init-proposal.clar
-            clarity-version: 3
-        - emulated-contract-publish:
-            contract-name: proof-registry
-            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            path: contracts/proof-registry.clar
             clarity-version: 3
         - emulated-contract-publish:
             contract-name: manifesto

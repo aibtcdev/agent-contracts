@@ -1,14 +1,13 @@
 ;; title: guardian-council
-;; version: 1.0.0
+;; version: 1.1.0
 ;; summary: Reputation-based guardian council for pegged agent DAOs.
 ;; description: Manages a council of 3-5 agents selected by reputation score.
 ;; Guardians can approve small spends (<2% of treasury per week) without a vote.
-;; Can be slashed or removed by 66% reputation-weighted vote.
+;; Can be slashed or removed by 66% reputation-weighted vote (with voting period).
 ;; Auto-dissolves when the DAO upgrades to free-floating (Phase 2).
 
 ;; TRAITS
 (impl-trait .dao-traits.extension)
-(use-trait ft-trait 'SP3FBR2AGK5H9QBDH3EEN6DF8EK8JY7RX8QJ5SVTE.sip-010-trait-ft-standard.sip-010-trait)
 
 ;; CONSTANTS
 (define-constant SELF (as-contract tx-sender))
@@ -16,7 +15,9 @@
 (define-constant MIN_GUARDIANS u3)
 (define-constant SPEND_LIMIT_BPS u200) ;; 2% of treasury per week
 (define-constant WEEK_IN_BLOCKS u1008) ;; ~7 days
+(define-constant SLASH_VOTING_PERIOD u144) ;; ~1 day minimum voting window
 (define-constant SLASH_THRESHOLD u6600) ;; 66% reputation-weighted
+(define-constant MIN_REPUTATION u1) ;; minimum reputation score
 (define-constant BASIS_POINTS u10000)
 
 ;; Error codes (6100 range)
@@ -31,6 +32,7 @@
 (define-constant ERR_VOTE_NOT_FOUND (err u6108))
 (define-constant ERR_ZERO_AMOUNT (err u6109))
 (define-constant ERR_ZERO_REPUTATION (err u6110))
+(define-constant ERR_VOTING_NOT_ENDED (err u6111))
 
 ;; DATA VARS
 (define-data-var dissolved bool false)
@@ -95,7 +97,7 @@
     (asserts! (not (var-get dissolved)) ERR_COUNCIL_DISSOLVED)
     (asserts! (is-none (map-get? Guardians agent)) ERR_ALREADY_GUARDIAN)
     (asserts! (< (var-get guardian-count) MAX_GUARDIANS) ERR_MAX_GUARDIANS)
-    (asserts! (> reputation u0) ERR_ZERO_REPUTATION)
+    (asserts! (>= reputation MIN_REPUTATION) ERR_ZERO_REPUTATION)
     (map-set Guardians agent { reputation: reputation, joined-at: stacks-block-height })
     (map-set ReputationScores agent reputation)
     (var-set guardian-count (+ (var-get guardian-count) u1))
@@ -128,9 +130,11 @@
 )
 
 ;; Update reputation score for any DAO member
+;; [H4 FIX] Enforces minimum reputation to prevent zero-total-rep attacks
 (define-public (set-reputation (agent principal) (score uint))
   (begin
     (try! (is-dao-or-extension))
+    (asserts! (>= score MIN_REPUTATION) ERR_ZERO_REPUTATION)
     (map-set ReputationScores agent score)
     ;; If they're a guardian, update their guardian record too
     (match (map-get? Guardians agent)
@@ -150,12 +154,16 @@
 ;; SMALL SPEND APPROVAL (<2% of treasury per week)
 ;; ============================================================
 
-;; Guardian approves a small sBTC spend from treasury
-(define-public (approve-small-spend (ft <ft-trait>) (amount uint) (recipient principal) (treasury-balance uint))
+;; [C1 FIX] Guardian approves a small sBTC spend from treasury.
+;; Reads actual treasury balance on-chain instead of trusting caller input.
+;; [M2 FIX] Hardcodes sBTC - no ft trait parameter to prevent token substitution.
+(define-public (approve-small-spend (amount uint) (recipient principal))
   (let
     (
       (sender tx-sender)
       (week (get-current-week))
+      ;; Read actual treasury sBTC balance on-chain
+      (treasury-balance (unwrap-panic (contract-call? .mock-sbtc get-balance .dao-treasury)))
       (week-limit (/ (* treasury-balance SPEND_LIMIT_BPS) BASIS_POINTS))
       (already-spent (get-week-spending sender week))
       (new-total (+ already-spent amount))
@@ -175,13 +183,14 @@
       true
     )
     (var-set current-week-spent (+ (var-get current-week-spent) amount))
-    ;; Execute the spend via treasury
-    (try! (contract-call? .dao-treasury withdraw-ft ft amount recipient))
+    ;; Execute the spend via treasury - hardcoded to sBTC only
+    (try! (contract-call? .dao-treasury withdraw-ft .mock-sbtc amount recipient))
     (print {
       notification: "guardian-council/approve-small-spend",
       payload: {
         guardian: sender, amount: amount, recipient: recipient,
-        week-spent: new-total, week-limit: week-limit
+        week-spent: new-total, week-limit: week-limit,
+        treasury-balance: treasury-balance
       }
     })
     (ok true)
@@ -190,6 +199,7 @@
 
 ;; ============================================================
 ;; SLASH VOTING (66% reputation-weighted to remove a guardian)
+;; [H2 FIX] Added mandatory voting period before conclusion
 ;; ============================================================
 
 ;; Start a slash vote against a guardian
@@ -215,7 +225,8 @@
     (map-set SlashVotes { vote-id: vote-id, voter: voter } true)
     (print {
       notification: "guardian-council/start-slash-vote",
-      payload: { vote-id: vote-id, target: target, proposer: voter }
+      payload: { vote-id: vote-id, target: target, proposer: voter,
+                 end-block: (+ stacks-block-height SLASH_VOTING_PERIOD) }
     })
     (ok vote-id)
   )
@@ -249,6 +260,7 @@
 )
 
 ;; Conclude a slash vote
+;; [H2 FIX] Must wait SLASH_VOTING_PERIOD blocks after creation
 (define-public (conclude-slash-vote (vote-id uint))
   (let
     (
@@ -256,9 +268,14 @@
       (total-rep (var-get total-reputation))
       (rep-for (get rep-for vote-data))
       ;; 66% of total reputation must vote in favor
-      (passed (>= (* rep-for BASIS_POINTS) (* total-rep SLASH_THRESHOLD)))
+      (passed (and
+        (> total-rep u0)
+        (>= (* rep-for BASIS_POINTS) (* total-rep SLASH_THRESHOLD))
+      ))
     )
     (asserts! (not (get concluded vote-data)) ERR_ALREADY_VOTED)
+    ;; [H2 FIX] Enforce minimum voting period
+    (asserts! (>= stacks-block-height (+ (get created-at vote-data) SLASH_VOTING_PERIOD)) ERR_VOTING_NOT_ENDED)
     (map-set SlashVoteData vote-id
       (merge vote-data { concluded: true, passed: passed })
     )
