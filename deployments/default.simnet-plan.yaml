@@ -117,9 +117,24 @@ plan:
             path: contracts/checkin-registry.clar
             clarity-version: 3
         - emulated-contract-publish:
+            contract-name: dao-treasury
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/extensions/dao-treasury.clar
+            clarity-version: 3
+        - emulated-contract-publish:
             contract-name: mock-sbtc
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/token/mock-sbtc.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: proof-registry
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/proof-registry.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: auto-micro-payout
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/pegged/auto-micro-payout.clar
             clarity-version: 3
         - emulated-contract-publish:
             contract-name: dao-token
@@ -142,6 +157,11 @@ plan:
             path: contracts/extensions/dao-epoch.clar
             clarity-version: 3
         - emulated-contract-publish:
+            contract-name: dao-pegged
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/pegged/dao-pegged.clar
+            clarity-version: 3
+        - emulated-contract-publish:
             contract-name: dao-run-cost
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/core/dao-run-cost.clar
@@ -152,9 +172,19 @@ plan:
             path: contracts/extensions/dao-token-owner.clar
             clarity-version: 3
         - emulated-contract-publish:
-            contract-name: dao-treasury
+            contract-name: reputation-registry
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            path: contracts/extensions/dao-treasury.clar
+            path: contracts/pegged/reputation-registry.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: token-pegged
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/pegged/token-pegged.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: init-pegged-dao
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/proposals/init-pegged-dao.clar
             clarity-version: 3
         - emulated-contract-publish:
             contract-name: init-proposal
@@ -162,15 +192,13 @@ plan:
             path: contracts/proposals/init-proposal.clar
             clarity-version: 3
         - emulated-contract-publish:
-            contract-name: proof-registry
-            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            path: contracts/proof-registry.clar
-            clarity-version: 3
-        - emulated-contract-publish:
             contract-name: manifesto
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/manifesto.clar
             clarity-version: 3
+      epoch: "3.0"
+    - id: 2
+      transactions:
         - emulated-contract-publish:
             contract-name: sbtc-config
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
@@ -180,5 +208,15 @@ plan:
             contract-name: test-proposal
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/proposals/test-proposal.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: treasury-proposals
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/pegged/treasury-proposals.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: upgrade-to-free-floating
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/pegged/upgrade-to-free-floating.clar
             clarity-version: 3
       epoch: "3.0"
