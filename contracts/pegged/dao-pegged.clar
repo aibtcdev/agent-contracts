@@ -71,10 +71,12 @@
 ;; ============================================================
 
 ;; Advance to Phase 2 (called by upgrade-to-free-floating on successful vote)
+;; S7: one-way ratchet - phase can only increase, never revert
 (define-public (set-phase (new-phase uint))
   (begin
     (try! (is-dao-or-extension))
     (asserts! (or (is-eq new-phase u1) (is-eq new-phase u2)) ERR_NOT_AUTHORIZED)
+    (asserts! (> new-phase (var-get phase)) ERR_NOT_AUTHORIZED)
     (var-set phase new-phase)
     (print {
       notification: "dao-pegged/phase-change",
