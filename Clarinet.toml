@@ -91,6 +91,35 @@ epoch = "3.0"
 path = "contracts/manifesto.clar"
 epoch = "3.0"
 
+# Pegged DAO v2 contracts (no guardian council - reputation-governed)
+[contracts.token-pegged]
+path = "contracts/pegged/token-pegged.clar"
+epoch = "3.0"
+
+[contracts.dao-pegged]
+path = "contracts/pegged/dao-pegged.clar"
+epoch = "3.0"
+
+[contracts.reputation-registry]
+path = "contracts/pegged/reputation-registry.clar"
+epoch = "3.0"
+
+[contracts.auto-micro-payout]
+path = "contracts/pegged/auto-micro-payout.clar"
+epoch = "3.0"
+
+[contracts.treasury-proposals]
+path = "contracts/pegged/treasury-proposals.clar"
+epoch = "3.0"
+
+[contracts.upgrade-to-free-floating]
+path = "contracts/pegged/upgrade-to-free-floating.clar"
+epoch = "3.0"
+
+[contracts.init-pegged-dao]
+path = "contracts/proposals/init-pegged-dao.clar"
+epoch = "3.0"
+
 # Core contracts (independent multisig)
 [contracts.dao-run-cost]
 path = "contracts/core/dao-run-cost.clar"
