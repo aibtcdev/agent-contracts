@@ -13,6 +13,7 @@ contract_id = 'SP3FBR2AGK5H9QBDH3EEN6DF8EK8JY7RX8QJ5SVTE.sip-010-trait-ft-standa
 contract_id = 'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token'
 
 
+
 # Trait contracts (must be listed first for dependencies)
 [contracts.dao-traits]
 path = "contracts/traits/dao-traits.clar"
@@ -37,7 +38,10 @@ epoch = "3.0"
 path = "contracts/token/mock-sbtc.clar"
 epoch = "3.0"
 
-[contracts.mock-identity-registry]
+# Identity registry: mock in simnet, maps to real identity-registry-v2 on mainnet
+# via deployment plan. Matches the interface of
+# SP1NMR7MY0TJ1QA7WQBZ6504KC79PZNTRQH4YGFJD.identity-registry-v2
+[contracts.identity-registry]
 path = "contracts/mocks/mock-identity-registry.clar"
 epoch = "3.0"
 

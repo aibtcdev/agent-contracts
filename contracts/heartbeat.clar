@@ -14,13 +14,19 @@
 
 ;; Error codes
 (define-constant ERR_CANNOT_BEAT_SELF (err u1000))
+(define-constant ERR_NOT_AUTHORIZED (err u1001))
 
 ;; =========================================
 ;; DATA STORAGE
 ;; =========================================
 
-;; Last Stacks block height at which the agent was seen
-(define-map last-seen principal uint)
+;; Agent liveness record -- stores block metadata for each heartbeat
+;; (stacks block, bitcoin block, and block timestamp for downstream consumers)
+(define-map last-seen principal {
+  stacks-block: uint,
+  burn-block: uint,
+  timestamp: uint
+})
 
 ;; Total unique agents that have ever checked in
 (define-data-var total-agents uint u0)
@@ -35,7 +41,10 @@
 ;; @returns (response bool uint) - always succeeds
 (define-public (beat (agent principal))
   (begin
-    ;; Prevent contracts from recording activity for themselves
+    ;; Only DAO contracts/extensions can record liveness on behalf of others.
+    ;; Prevents external actors from keeping dormant agents "alive" to
+    ;; manipulate voting eligibility thresholds.
+    (try! (is-dao-or-extension))
     (asserts! (not (is-eq agent (as-contract tx-sender))) ERR_CANNOT_BEAT_SELF)
     (record-activity agent)
     (ok true)
@@ -52,7 +61,8 @@
       notification: "heartbeat/check-in",
       payload: {
         agent: tx-sender,
-        block: stacks-block-height
+        stacks-block: stacks-block-height,
+        burn-block: burn-block-height
       }
     })
     (ok true)
@@ -70,14 +80,14 @@
 ;; @returns bool - true if agent was seen within threshold blocks
 (define-read-only (is-active (agent principal) (threshold uint))
   (match (map-get? last-seen agent)
-    block (< (- stacks-block-height block) threshold)
+    entry (< (- stacks-block-height (get stacks-block entry)) threshold)
     false
   )
 )
 
-;; @desc Get the last block height at which an agent was seen.
+;; @desc Get the full liveness record for an agent.
 ;; @param agent - The principal to query
-;; @returns (optional uint) - block height or none if never seen
+;; @returns (optional { stacks-block, burn-block, timestamp }) or none if never seen
 (define-read-only (get-last-seen (agent principal))
   (map-get? last-seen agent)
 )
@@ -87,7 +97,7 @@
 ;; @returns (optional uint) - blocks elapsed or none if never seen
 (define-read-only (get-blocks-since (agent principal))
   (match (map-get? last-seen agent)
-    block (some (- stacks-block-height block))
+    entry (some (- stacks-block-height (get stacks-block entry)))
     none
   )
 )
@@ -112,12 +122,33 @@
 ;; =========================================
 
 ;; Record activity for an agent. Increments total-agents on first sight.
+;; Stores stacks block, bitcoin (burn) block, and block timestamp.
+;; Uses previous block for timestamp since current block time is not
+;; available until the block is committed (same pattern as checkin-registry).
 (define-private (record-activity (agent principal))
-  (begin
+  (let
+    (
+      (prev-block (- stacks-block-height u1))
+      (block-time (default-to u0 (get-stacks-block-info? time prev-block)))
+    )
     (if (is-none (map-get? last-seen agent))
       (var-set total-agents (+ (var-get total-agents) u1))
       false
     )
-    (map-set last-seen agent stacks-block-height)
+    (map-set last-seen agent {
+      stacks-block: stacks-block-height,
+      burn-block: burn-block-height,
+      timestamp: block-time
+    })
   )
+)
+
+(define-private (is-dao-or-extension)
+  (ok (asserts!
+    (or
+      (is-eq contract-caller .base-dao)
+      (contract-call? .base-dao is-extension contract-caller)
+    )
+    ERR_NOT_AUTHORIZED
+  ))
 )

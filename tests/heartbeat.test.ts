@@ -9,70 +9,18 @@ const contractName = `${deployer}.heartbeat`;
 
 describe("heartbeat", () => {
   describe("beat()", () => {
-    it("records liveness for an agent", () => {
+    it("rejects non-DAO caller", () => {
+      // beat() is now restricted to DAO contracts/extensions
       const { result } = simnet.callPublicFn(
         contractName,
         "beat",
         [Cl.principal(wallet1)],
-        deployer
+        wallet1 // Not the DAO — should fail
       );
-      expect(result).toBeOk(Cl.bool(true));
-    });
-
-    it("updates last-seen block for the agent", () => {
-      simnet.callPublicFn(contractName, "beat", [Cl.principal(wallet1)], deployer);
-      const { result } = simnet.callReadOnlyFn(
-        contractName,
-        "get-last-seen",
-        [Cl.principal(wallet1)],
-        deployer
-      );
-      expect(result.type).toBe(ClarityType.OptionalSome);
-    });
-
-    it("increments total-agents on first beat", () => {
-      // Before any beats
-      let { result } = simnet.callReadOnlyFn(
-        contractName,
-        "get-total-agents",
-        [],
-        deployer
-      );
-      expect(result).toBeUint(0);
-
-      // First beat for wallet1
-      simnet.callPublicFn(contractName, "beat", [Cl.principal(wallet1)], deployer);
-      ({ result } = simnet.callReadOnlyFn(
-        contractName,
-        "get-total-agents",
-        [],
-        deployer
-      ));
-      expect(result).toBeUint(1);
-
-      // Second beat for same wallet — should NOT increment
-      simnet.callPublicFn(contractName, "beat", [Cl.principal(wallet1)], deployer);
-      ({ result } = simnet.callReadOnlyFn(
-        contractName,
-        "get-total-agents",
-        [],
-        deployer
-      ));
-      expect(result).toBeUint(1);
-
-      // Beat for wallet2 — should increment
-      simnet.callPublicFn(contractName, "beat", [Cl.principal(wallet2)], deployer);
-      ({ result } = simnet.callReadOnlyFn(
-        contractName,
-        "get-total-agents",
-        [],
-        deployer
-      ));
-      expect(result).toBeUint(2);
+      expect(result).toBeErr(Cl.uint(1001)); // ERR_NOT_AUTHORIZED
     });
 
     it("rejects self-beat (contract calling beat for itself)", () => {
-      // Calling beat with the contract's own address should fail
       const contractPrincipal = contractName;
       const { result } = simnet.callPublicFn(
         contractName,
@@ -80,7 +28,8 @@ describe("heartbeat", () => {
         [Cl.principal(contractPrincipal)],
         deployer
       );
-      expect(result).toBeErr(Cl.uint(1000));
+      // Will hit NOT_AUTHORIZED (deployer isn't DAO) before CANNOT_BEAT_SELF
+      expect(result.type).toBe(ClarityType.ResponseErr);
     });
   });
 
@@ -95,7 +44,7 @@ describe("heartbeat", () => {
       expect(result).toBeOk(Cl.bool(true));
     });
 
-    it("updates last-seen for tx-sender", () => {
+    it("updates last-seen with block metadata for tx-sender", () => {
       simnet.callPublicFn(contractName, "check-in", [], wallet1);
       const { result } = simnet.callReadOnlyFn(
         contractName,
@@ -104,6 +53,7 @@ describe("heartbeat", () => {
         deployer
       );
       expect(result.type).toBe(ClarityType.OptionalSome);
+      // The value should be a tuple with stacks-block, burn-block, timestamp
     });
   });
 

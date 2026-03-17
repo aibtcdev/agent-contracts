@@ -23,13 +23,14 @@
 (define-constant ERR_NOT_TOKEN_OWNER (err u2001))
 (define-constant ERR_INSUFFICIENT_BALANCE (err u2002))
 (define-constant ERR_INVALID_AMOUNT (err u2003))
+;; u2004-u2006 removed: entrance tax codes deleted per locked decision #1 (no tax)
 (define-constant ERR_INSUFFICIENT_BACKING (err u2007))
 
 ;; DATA VARS
 (define-data-var token-uri (optional (string-utf8 256))
   (some u"https://aibtc.com/token-metadata.json"))
+;; Token owner: deployer initially, init-proposal transfers to base-dao at bootstrap
 (define-data-var token-owner principal tx-sender)
-(define-data-var total-backing uint u0)
 
 ;; ============================================================
 ;; SIP-010 FUNGIBLE TOKEN INTERFACE
@@ -38,8 +39,8 @@
 (define-public (transfer (amount uint) (sender principal) (recipient principal) (memo (optional (buff 34))))
   (begin
     (asserts! (is-eq tx-sender sender) ERR_NOT_TOKEN_OWNER)
-    ;; Record liveness for sender
-    (try! (contract-call? .heartbeat beat sender))
+    ;; Record liveness -- don't fail transfer if heartbeat errors
+    (match (contract-call? .heartbeat beat sender) ok-val true err-val true)
     (match memo to-print (print to-print) 0x)
     (print {
       notification: "aibtc-token/transfer",
@@ -68,14 +69,11 @@
       .mock-sbtc
       transfer amount sender DAO_CONTRACT none))
 
-    ;; Update backing
-    (var-set total-backing (+ (var-get total-backing) amount))
-
-    ;; Mint equal tokens
+    ;; Mint equal tokens (backing = ft-get-supply, always in sync)
     (try! (ft-mint? aibtc-token amount sender))
 
-    ;; Record liveness
-    (try! (contract-call? .heartbeat beat sender))
+    ;; Record liveness -- don't fail deposit if heartbeat errors
+    (match (contract-call? .heartbeat beat sender) ok-val true err-val true)
 
     (print {
       notification: "aibtc-token/deposit",
@@ -93,25 +91,20 @@
     (
       (sender tx-sender)
       (sender-balance (ft-get-balance aibtc-token sender))
-      (current-backing (var-get total-backing))
     )
     (asserts! (> amount u0) ERR_INVALID_AMOUNT)
     (asserts! (>= sender-balance amount) ERR_INSUFFICIENT_BALANCE)
-    (asserts! (>= current-backing amount) ERR_INSUFFICIENT_BACKING)
 
     ;; Burn tokens
     (try! (ft-burn? aibtc-token amount sender))
 
-    ;; Update backing
-    (var-set total-backing (- current-backing amount))
-
-    ;; Return sBTC 1:1
+    ;; Return sBTC 1:1 (backing = contract's sBTC balance, always >= total supply)
     (try! (as-contract (contract-call?
       .mock-sbtc
       transfer amount DAO_CONTRACT sender none)))
 
-    ;; Record liveness
-    (try! (contract-call? .heartbeat beat sender))
+    ;; Record liveness -- don't fail withdraw if heartbeat errors
+    (match (contract-call? .heartbeat beat sender) ok-val true err-val true)
 
     (print {
       notification: "aibtc-token/withdraw",
@@ -173,8 +166,9 @@
 (define-read-only (get-token-uri)
   (ok (var-get token-uri)))
 
+;; Backing = contract's sBTC balance (always in sync, no separate var needed)
 (define-read-only (get-total-backing)
-  (var-get total-backing))
+  (unwrap-panic (contract-call? .mock-sbtc get-balance DAO_CONTRACT)))
 
 (define-read-only (get-token-owner)
   (var-get token-owner))

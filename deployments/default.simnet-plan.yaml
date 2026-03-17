@@ -172,6 +172,11 @@ plan:
             path: contracts/extensions/dao-treasury.clar
             clarity-version: 3
         - emulated-contract-publish:
+            contract-name: identity-registry
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/mocks/mock-identity-registry.clar
+            clarity-version: 3
+        - emulated-contract-publish:
             contract-name: init-proposal
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/proposals/init-proposal.clar
@@ -185,11 +190,6 @@ plan:
             contract-name: manifesto
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/manifesto.clar
-            clarity-version: 3
-        - emulated-contract-publish:
-            contract-name: mock-identity-registry
-            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            path: contracts/mocks/mock-identity-registry.clar
             clarity-version: 3
         - emulated-contract-publish:
             contract-name: publisher-role

@@ -19,6 +19,12 @@
 ;; The challenge message agents must sign to prove BTC ownership.
 ;; Using a fixed domain-separated string prevents replay attacks
 ;; across different protocols.
+;;
+;; NOTE: This uses plain sha256, NOT BIP-137/BIP-322 Bitcoin message signing.
+;; Standard wallet signMessage() (Leather, Xverse) won't produce compatible
+;; signatures. Agents must use custom signing code or the agent SDK.
+;; This is intentional -- BIP-137 adds variable-length encoding that
+;; complicates on-chain recovery. Document this for implementors.
 (define-constant BINDING_CHALLENGE 0x414942544320425443204f776e65727368697020566572696669636174696f6e)
 ;; = "AIBTC BTC Ownership Verification" in hex
 
@@ -58,27 +64,33 @@
       true
     )
 
-    ;; Store the binding
-    (map-set btc-bindings caller recovered-key)
-    (map-set reverse-bindings recovered-key caller)
+    ;; Capture first-binding status BEFORE map-set (map-set overwrites, making is-none always false after)
+    (let
+      (
+        (is-new (is-none (map-get? btc-bindings caller)))
+      )
+      ;; Store the binding
+      (map-set btc-bindings caller recovered-key)
+      (map-set reverse-bindings recovered-key caller)
 
-    ;; Increment counter on first binding
-    (if (is-none (map-get? btc-bindings caller))
-      (var-set total-bindings (+ (var-get total-bindings) u1))
-      false
+      ;; Increment counter on first binding only
+      (if is-new
+        (var-set total-bindings (+ (var-get total-bindings) u1))
+        false
+      )
+
+      ;; Record heartbeat
+      (try! (contract-call? .heartbeat beat caller))
+
+      (print {
+        notification: "btc-binding/bind",
+        payload: {
+          principal: caller,
+          btc-pubkey: recovered-key
+        }
+      })
+      (ok recovered-key)
     )
-
-    ;; Record heartbeat
-    (try! (contract-call? .heartbeat beat caller))
-
-    (print {
-      notification: "btc-binding/bind",
-      payload: {
-        principal: caller,
-        btc-pubkey: recovered-key
-      }
-    })
-    (ok recovered-key)
   )
 )
 

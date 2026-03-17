@@ -7,7 +7,7 @@ const wallet1 = accounts.get("wallet_1")!;
 const wallet2 = accounts.get("wallet_2")!;
 
 const contractName = `${deployer}.publisher-role`;
-const mockRegistry = `${deployer}.mock-identity-registry`;
+const identityRegistry = `${deployer}.identity-registry`;
 
 describe("publisher-role", () => {
   describe("initial state", () => {
@@ -54,9 +54,9 @@ describe("publisher-role", () => {
     });
 
     it("returns true after publisher is set and wallet matches", () => {
-      // Register wallet1 as agent-id 1 in mock registry
+      // Register wallet1 as agent in identity registry mock
       simnet.callPublicFn(
-        mockRegistry,
+        identityRegistry,
         "register-agent",
         [Cl.principal(wallet1)],
         deployer

@@ -25,8 +25,11 @@
 ;; DATA VARS
 ;; =========================================
 
-;; Publisher identified by ERC-8004 agent-id (uint)
-;; If publisher rotates wallet, DAO follows automatically via registry lookup
+;; Publisher identified by ERC-8004 agent-id (uint).
+;; If publisher rotates wallet, DAO follows automatically via registry lookup.
+;; Initialized to u0 but MUST be set via init-proposal at bootstrap.
+;; Note: u0 is a valid agent-id in the registry, so set-publisher rejects u0
+;; to prevent accidental assignment to the wrong agent.
 (define-data-var publisher-agent-id uint u0)
 
 ;; Treasury freeze flag -- set true when a governance proposal is active
@@ -142,10 +145,11 @@
 
 ;; @desc Resolve the publisher's current wallet via ERC-8004 identity registry.
 ;; If the publisher rotated their wallet, this returns the new one automatically.
-;; NOTE: In production, replace .mock-identity-registry with
-;; 'SP1NMR7MY0TJ1QA7WQBZ6504KC79PZNTRQH4YGFJD.identity-registry-v2
+;; Uses .identity-registry which maps to the mock in simnet and to the real
+;; SP1NMR7MY0TJ1QA7WQBZ6504KC79PZNTRQH4YGFJD.identity-registry-v2 on mainnet
+;; via the deployment plan (see deployments/).
 (define-read-only (get-publisher-wallet)
-  (contract-call? .mock-identity-registry
+  (contract-call? .identity-registry
     get-agent-wallet (var-get publisher-agent-id))
 )
 
