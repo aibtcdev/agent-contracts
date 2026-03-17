@@ -12,6 +12,7 @@ contract_id = 'SP3FBR2AGK5H9QBDH3EEN6DF8EK8JY7RX8QJ5SVTE.sip-010-trait-ft-standa
 [[project.requirements]]
 contract_id = 'SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-token'
 
+
 # Trait contracts (must be listed first for dependencies)
 [contracts.dao-traits]
 path = "contracts/traits/dao-traits.clar"
@@ -19,6 +20,11 @@ epoch = "3.0"
 
 [contracts.agent-traits]
 path = "contracts/traits/agent-traits.clar"
+epoch = "3.0"
+
+# Heartbeat (no dependencies, must load before token/extensions)
+[contracts.heartbeat]
+path = "contracts/heartbeat.clar"
 epoch = "3.0"
 
 # DAO contracts (depend on traits)
@@ -29,6 +35,10 @@ epoch = "3.0"
 # Token contracts (depend on DAO for governance)
 [contracts.mock-sbtc]
 path = "contracts/token/mock-sbtc.clar"
+epoch = "3.0"
+
+[contracts.mock-identity-registry]
+path = "contracts/mocks/mock-identity-registry.clar"
 epoch = "3.0"
 
 # Config contracts
@@ -61,6 +71,10 @@ epoch = "3.0"
 path = "contracts/extensions/core-proposals.clar"
 epoch = "3.0"
 
+[contracts.publisher-role]
+path = "contracts/extensions/publisher-role.clar"
+epoch = "3.0"
+
 # Proposal contracts
 [contracts.test-proposal]
 path = "contracts/proposals/test-proposal.clar"
@@ -77,6 +91,10 @@ epoch = "3.0"
 
 [contracts.agent-account]
 path = "contracts/agent/agent-account.clar"
+epoch = "3.0"
+
+[contracts.aibtc-token]
+path = "contracts/token/aibtc-token.clar"
 epoch = "3.0"
 
 [contracts.checkin-registry]

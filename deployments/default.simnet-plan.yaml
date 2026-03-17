@@ -112,14 +112,24 @@ plan:
             path: contracts/agent/agent-account.clar
             clarity-version: 3
         - emulated-contract-publish:
-            contract-name: checkin-registry
+            contract-name: heartbeat
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-            path: contracts/checkin-registry.clar
+            path: contracts/heartbeat.clar
             clarity-version: 3
         - emulated-contract-publish:
             contract-name: mock-sbtc
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/token/mock-sbtc.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: aibtc-token
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/token/aibtc-token.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: checkin-registry
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/checkin-registry.clar
             clarity-version: 3
         - emulated-contract-publish:
             contract-name: dao-token
@@ -172,10 +182,23 @@ plan:
             path: contracts/manifesto.clar
             clarity-version: 3
         - emulated-contract-publish:
+            contract-name: mock-identity-registry
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/mocks/mock-identity-registry.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: publisher-role
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/extensions/publisher-role.clar
+            clarity-version: 3
+        - emulated-contract-publish:
             contract-name: sbtc-config
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/config/sbtc-config.clar
             clarity-version: 3
+      epoch: "3.0"
+    - id: 2
+      transactions:
         - emulated-contract-publish:
             contract-name: test-proposal
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
