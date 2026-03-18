@@ -225,6 +225,32 @@
   )
 )
 
+;; Execute a passed proposal through an approved voting contract
+(define-public (execute-proposal
+    (votingContract <dao-core-proposals-trait>)
+    (proposalId uint)
+    (proposal <dao-proposal-trait>)
+  )
+  (begin
+    (asserts! (use-proposals-allowed) ERR_OPERATION_NOT_ALLOWED)
+    (asserts!
+      (is-approved-contract (contract-of votingContract) APPROVED_CONTRACT_VOTING)
+      ERR_CONTRACT_NOT_APPROVED
+    )
+    (print {
+      notification: "agent-account/execute-proposal",
+      payload: {
+        votingContract: (contract-of votingContract),
+        proposalId: proposalId,
+        proposal: (contract-of proposal),
+        sender: tx-sender,
+        caller: contract-caller
+      }
+    })
+    (as-contract (contract-call? votingContract execute-proposal proposalId proposal))
+  )
+)
+
 ;; ============================================================
 ;; CONFIGURATION (owner or agent with permission)
 ;; ============================================================
