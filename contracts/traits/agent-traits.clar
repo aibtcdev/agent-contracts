@@ -54,6 +54,11 @@
     (<dao-core-proposals-trait> uint <dao-proposal-trait>)
     (response bool uint)
   )
+  ;; Execute a passed + concluded proposal through the agent account
+  (execute-proposal
+    (<dao-core-proposals-trait> uint <dao-proposal-trait>)
+    (response bool uint)
+  )
 ))
 
 ;; Agent account configuration interface.

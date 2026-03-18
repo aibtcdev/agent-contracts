@@ -120,6 +120,10 @@
     (uint <proposal>)
     (response bool uint)
   )
+  (execute-proposal
+    (uint <proposal>)
+    (response bool uint)
+  )
   (get-proposal-data
     (uint)
     (response
