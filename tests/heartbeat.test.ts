@@ -91,6 +91,38 @@ describe("heartbeat", () => {
       );
       expect(result).toBeBool(false);
     });
+
+    it("returns false safely at boundary (threshold=0)", () => {
+      // Guard against underflow: threshold of zero must return false, not trap.
+      // Any stored block equals the current block at check-in time, so delta=0
+      // and 0 < 0 is false. No subtraction underflow possible.
+      simnet.callPublicFn(contractName, "check-in", [], wallet1);
+      const { result } = simnet.callReadOnlyFn(
+        contractName,
+        "is-active",
+        [Cl.principal(wallet1), Cl.uint(0)],
+        deployer
+      );
+      expect(result).toBeBool(false);
+    });
+
+    it("guard: is-active returns boolean (not trap) even at same-block query", () => {
+      // Documents the (>= stacks-block-height stored-block) guard added in
+      // response to tfireubs-ui review on PR #10. Previously the raw
+      // subtraction (- block stored) would trap under Clarity's unsigned
+      // arithmetic if stored > block. The guard ensures the function always
+      // returns a boolean without trapping, even at the boundary where
+      // current height equals stored height.
+      simnet.callPublicFn(contractName, "check-in", [], wallet1);
+      const { result } = simnet.callReadOnlyFn(
+        contractName,
+        "is-active",
+        [Cl.principal(wallet1), Cl.uint(1)],
+        deployer
+      );
+      // Delta is 0, threshold is 1, so 0 < 1 is true. No trap.
+      expect(result).toBeBool(true);
+    });
   });
 
   describe("get-blocks-since()", () => {

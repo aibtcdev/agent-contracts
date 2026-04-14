@@ -80,7 +80,8 @@
 ;; @returns bool - true if agent was seen within threshold blocks
 (define-read-only (is-active (agent principal) (threshold uint))
   (match (map-get? last-seen agent)
-    entry (< (- stacks-block-height (get stacks-block entry)) threshold)
+    entry (and (>= stacks-block-height (get stacks-block entry))
+               (< (- stacks-block-height (get stacks-block entry)) threshold))
     false
   )
 )
