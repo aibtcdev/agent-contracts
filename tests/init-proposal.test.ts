@@ -446,8 +446,10 @@ describe("init-proposal: print events", function () {
         e.data.contract_identifier === baseDaoAddress &&
         cvToJSON(e.data.value).value?.notification?.value === "base-dao/set-extension"
     );
-    // 6 extensions enabled
-    expect(setExtEvents.length).toBe(6);
+    // 6 core extensions enabled + 2 temporary init-proposal toggle events
+    // (enable before DAO-gated setup calls, disable at the end to prevent
+    // re-execution). See init-proposal.clar for the rationale.
+    expect(setExtEvents.length).toBe(8);
   });
 });
 
