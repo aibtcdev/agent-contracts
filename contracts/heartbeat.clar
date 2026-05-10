@@ -129,7 +129,7 @@
 (define-private (record-activity (agent principal))
   (let
     (
-      (prev-block (- stacks-block-height u1))
+      (prev-block (if (> stacks-block-height u0) (- stacks-block-height u1) u0))
       (block-time (default-to u0 (get-stacks-block-info? time prev-block)))
     )
     (if (is-none (map-get? last-seen agent))
