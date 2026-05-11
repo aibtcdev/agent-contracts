@@ -71,10 +71,26 @@
 ;; ============================================================
 
 ;; Advance to Phase 2 (called by upgrade-to-free-floating on successful vote)
+;; S7: one-way ratchet - phase can only increase, never revert.
+;;
+;; DESIGN NOTE (irreversibility is intentional):
+;;   There is NO break-glass mechanism. Not even the DAO itself can roll back
+;;   a phase transition via governance proposal - the (> new-phase current)
+;;   assertion blocks any revert regardless of caller. This is a deliberate
+;;   safety guarantee: Phase 2 unlocks features that were intentionally
+;;   disabled in Phase 1 (peg exit, free-floating dynamics). Allowing revert
+;;   would let a malicious or compromised DAO extension re-enter Phase 1 to
+;;   abuse features that were supposed to be locked.
+;;
+;;   Upgrade path for Phase 2 bugs: deploy a new pegged-dao contract and
+;;   migrate treasury/state via a governance-approved one-time migration
+;;   extension. NOT a phase-revert. This keeps the ratchet invariant intact
+;;   across the contract's lifetime.
 (define-public (set-phase (new-phase uint))
   (begin
     (try! (is-dao-or-extension))
     (asserts! (or (is-eq new-phase u1) (is-eq new-phase u2)) ERR_NOT_AUTHORIZED)
+    (asserts! (> new-phase (var-get phase)) ERR_NOT_AUTHORIZED)
     (var-set phase new-phase)
     (print {
       notification: "dao-pegged/phase-change",
