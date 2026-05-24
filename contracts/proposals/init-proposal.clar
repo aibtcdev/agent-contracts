@@ -27,12 +27,24 @@
     (try! (contract-call? .base-dao set-extension .core-proposals true))
     (try! (contract-call? .base-dao set-extension .agent-registry true))
 
+    ;; Temporarily enable this proposal as an extension so it can call DAO-
+    ;; gated functions (set-treasury, set-dao-charter, allow-asset) on behalf
+    ;; of the DAO during construction. Disabled at the end of this proposal
+    ;; so it cannot re-execute.
+    (try! (contract-call? .base-dao set-extension .init-proposal true))
+
+    ;; Set treasury address on dao-token so entrance tax flows to DAO treasury
+    (try! (contract-call? .dao-token set-treasury .dao-treasury))
+
     ;; Set initial charter
     (try! (contract-call? .dao-charter set-dao-charter INITIAL_CHARTER))
 
     ;; Allow tokens in treasury
     (try! (contract-call? .dao-treasury allow-asset .mock-sbtc true))
     (try! (contract-call? .dao-treasury allow-asset .dao-token true))
+
+    ;; Disable this proposal as an extension so it cannot re-execute.
+    (try! (contract-call? .base-dao set-extension .init-proposal false))
 
     ;; Print initialization info
     (print {

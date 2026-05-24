@@ -390,6 +390,54 @@ describe("init-proposal: treasury assets allowed", function () {
   });
 });
 
+describe("init-proposal: treasury address routed (regression for #3)", function () {
+  // Locks in the ordering invariant: init-proposal must enable itself as an
+  // extension, call dao-token.set-treasury, then disable itself — all within
+  // construct(). Without this assertion, a future refactor could silently drop
+  // the set-treasury call, returning entrance tax routing to the deployer
+  // wallet (the original bug this PR fixes; flagged by SlyHarp +
+  // JackBinswitch-btc + arc0btc reviews).
+  it("dao-token treasury-address is set to .dao-treasury after construct", function () {
+    // arrange
+    simnet.callPublicFn(
+      baseDaoAddress,
+      "construct",
+      [Cl.principal(initProposalAddress)],
+      deployer
+    );
+    // act
+    const result = simnet.callReadOnlyFn(
+      daoTokenAddress,
+      "get-treasury",
+      [],
+      deployer
+    ).result;
+    // assert
+    expect(result).toStrictEqual(Cl.principal(treasuryAddress));
+  });
+
+  it("init-proposal is disabled as extension after construct (atomicity check)", function () {
+    // arrange
+    simnet.callPublicFn(
+      baseDaoAddress,
+      "construct",
+      [Cl.principal(initProposalAddress)],
+      deployer
+    );
+    // act — init-proposal temporarily enables itself during construct so it
+    // can call set-treasury; this asserts it disables itself at the end so it
+    // cannot re-execute against the DAO.
+    const result = simnet.callReadOnlyFn(
+      baseDaoAddress,
+      "is-extension",
+      [Cl.principal(initProposalAddress)],
+      deployer
+    ).result;
+    // assert
+    expect(result).toStrictEqual(Cl.bool(false));
+  });
+});
+
 describe("init-proposal: print events", function () {
   it("construct emits init-proposal/execute event", function () {
     // arrange
@@ -446,8 +494,10 @@ describe("init-proposal: print events", function () {
         e.data.contract_identifier === baseDaoAddress &&
         cvToJSON(e.data.value).value?.notification?.value === "base-dao/set-extension"
     );
-    // 6 extensions enabled
-    expect(setExtEvents.length).toBe(6);
+    // 6 core extensions enabled + 2 temporary init-proposal toggle events
+    // (enable before DAO-gated setup calls, disable at the end to prevent
+    // re-execution). See init-proposal.clar for the rationale.
+    expect(setExtEvents.length).toBe(8);
   });
 });
 
