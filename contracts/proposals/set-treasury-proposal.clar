@@ -17,9 +17,13 @@
 ;;   - moving treasury to a new multisig
 ;;   - switching to a yield-bearing treasury wrapper
 ;;
-;; The default placeholder here is the current dao-treasury extension, so
-;; deploying this unmodified is a no-op (safe reference behaviour).
-(define-constant NEW_TREASURY 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.dao-treasury)
+;; The default placeholder is the deployer-relative `.dao-treasury` principal,
+;; which resolves to the current dao-treasury extension in whichever
+;; environment this contract is deployed to (testnet or mainnet). Deploying
+;; this unmodified is a safe no-op in both environments. (arc0btc review nit:
+;; the previous `'ST1PQHQ…` testnet-prefix placeholder would not resolve on
+;; mainnet, defeating the "safe to deploy unmodified" claim.)
+(define-constant NEW_TREASURY .dao-treasury)
 
 ;; PUBLIC FUNCTIONS
 
