@@ -19,6 +19,7 @@
 (define-constant ERR_ALREADY_EXECUTED (err u2005))
 (define-constant ERR_INVALID_CONFIRMATIONS (err u2006))
 (define-constant ERR_ALREADY_CONFIRMED (err u2007))
+(define-constant ERR_PROPOSAL_NOT_FOUND (err u2008))
 
 ;; contract details
 (define-constant DEPLOYED_BURN_BLOCK burn-block-height)
@@ -229,7 +230,7 @@
         caller: contract-caller
       }
     })
-    (ok (and (try! (add-confirmation TRANSFER nonce)) (execute-transfer nonce ft)))
+    (ok (and (try! (add-confirmation TRANSFER nonce)) (try! (execute-transfer nonce ft))))
   )
 )
 
@@ -437,9 +438,23 @@
 
 ;; Execute transfer proposal
 (define-private (execute-transfer (nonce uint) (ft <sip010-trait>))
-  (let ((proposal (unwrap! (map-get? TransferProposals nonce) false)))
-    (asserts! (can-execute (get created-at proposal)) false)
-    (asserts! (is-none (get executed proposal)) false)
+  (let ((proposal (unwrap! (map-get? TransferProposals nonce) ERR_PROPOSAL_NOT_FOUND)))
+    ;; Check not expired
+    (asserts! (can-execute (get created-at proposal)) ERR_PROPOSAL_EXPIRED)
+    ;; Check not already executed
+    (asserts! (is-none (get executed proposal)) ERR_ALREADY_EXECUTED)
+    ;; Transfer FIRST: if the transfer fails, try! propagates the error, so
+    ;; the whole call returns (err ...) and Clarity rolls back every state
+    ;; change in this transaction (including the confirmation recorded by
+    ;; the caller). The proposal stays unexecuted and can be retried once
+    ;; the multisig is funded, instead of being bricked forever.
+    (try! (as-contract (contract-call? ft transfer
+      (get amount proposal)
+      SELF
+      (get recipient proposal)
+      none
+    )))
+    ;; Only mark as executed after the transfer succeeded
     (map-set TransferProposals nonce
       (merge proposal { executed: (some burn-block-height) })
     )
@@ -453,15 +468,7 @@
         executed-at: burn-block-height
       }
     })
-    (unwrap!
-      (as-contract (contract-call? ft transfer
-        (get amount proposal)
-        SELF
-        (get recipient proposal)
-        none
-      ))
-      false
-    )
+    (ok true)
   )
 )
 
